@@ -33,7 +33,7 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number,
   if (current && lines.length < maxLines) lines.push(current);
   if (lines.length === maxLines) {
     const last = lines[maxLines - 1];
-    if (ctx.measureText(last).width > maxWidth - 24) {
+    if (last !== undefined && ctx.measureText(last).width > maxWidth - 24) {
       lines[maxLines - 1] = `${last.slice(0, -1)}…`;
     }
   }
@@ -158,8 +158,10 @@ export function ShareDialog({ game, shareUrl, onClose, onShared }: ShareDialogPr
       ctx.fillRect(qrX, qrY, qrSize, qrSize);
       ctx.fillStyle = "#171614";
       for (let row = 0; row < qr.length; row += 1) {
-        for (let col = 0; col < qr[row].length; col += 1) {
-          if (qr[row][col]) {
+        const modules = qr[row];
+        if (!modules) continue;
+        for (let col = 0; col < modules.length; col += 1) {
+          if (modules[col]) {
             ctx.fillRect(qrX + col * module, qrY + row * module, module + 0.5, module + 0.5);
           }
         }

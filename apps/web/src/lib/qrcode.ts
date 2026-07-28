@@ -10,7 +10,7 @@
  */
 
 /** Data codeword capacity per version at level M, index 0 = version 1. */
-const DATA_CODEWORDS_M = [16, 28, 44, 64, 86, 108, 124, 154, 182, 216];
+const DATA_CODEWORDS_M = [16, 28, 44, 64, 86, 108, 124, 154, 182, 216] as const;
 
 /** Error-correction blocks per version at level M: [count, dataCodewords][]. */
 const EC_BLOCKS_M: ReadonlyArray<ReadonlyArray<readonly [number, number]>> = [
@@ -27,7 +27,7 @@ const EC_BLOCKS_M: ReadonlyArray<ReadonlyArray<readonly [number, number]>> = [
 ];
 
 /** EC codewords per block per version at level M. */
-const EC_CODEWORDS_PER_BLOCK_M = [10, 16, 26, 18, 24, 16, 18, 22, 22, 26];
+const EC_CODEWORDS_PER_BLOCK_M = [10, 16, 26, 18, 24, 16, 18, 22, 22, 26] as const;
 
 /** Alignment pattern centre coordinates per version. */
 const ALIGNMENT_CENTERS: ReadonlyArray<readonly number[]> = [
@@ -58,13 +58,13 @@ const GF_LOG = new Uint8Array(256);
     if (value & 0x100) value ^= 0x11d;
   }
   for (let index = 255; index < 512; index += 1) {
-    GF_EXP[index] = GF_EXP[index - 255];
+    GF_EXP[index] = tableAt(GF_EXP, index - 255, "GF exponent");
   }
 })();
 
 function gfMultiply(a: number, b: number): number {
   if (a === 0 || b === 0) return 0;
-  return GF_EXP[GF_LOG[a] + GF_LOG[b]];
+  return tableAt(GF_EXP, tableAt(GF_LOG, a, "GF logarithm") + tableAt(GF_LOG, b, "GF logarithm"), "GF exponent");
 }
 
 /** Builds the RS generator polynomial of the given degree. */
@@ -73,8 +73,9 @@ function generatorPolynomial(degree: number): Uint8Array {
   for (let index = 0; index < degree; index += 1) {
     const next = new Uint8Array(poly.length + 1);
     for (let term = 0; term < poly.length; term += 1) {
-      next[term] ^= poly[term];
-      next[term + 1] ^= gfMultiply(poly[term], GF_EXP[index]);
+      next[term] = tableAt(next, term, "generator coefficient") ^ tableAt(poly, term, "generator coefficient");
+      next[term + 1] = tableAt(next, term + 1, "generator coefficient") ^
+        gfMultiply(tableAt(poly, term, "generator coefficient"), tableAt(GF_EXP, index, "GF exponent"));
     }
     poly = next;
   }
@@ -86,12 +87,13 @@ function errorCorrection(data: Uint8Array, ecLength: number): Uint8Array {
   const generator = generatorPolynomial(ecLength);
   const remainder = new Uint8Array(ecLength);
   for (const byte of data) {
-    const factor = byte ^ remainder[0];
+    const factor = byte ^ tableAt(remainder, 0, "RS remainder");
     remainder.copyWithin(0, 1);
     remainder[ecLength - 1] = 0;
     if (factor !== 0) {
       for (let index = 0; index < ecLength; index += 1) {
-        remainder[index] ^= gfMultiply(generator[index + 1], factor);
+        remainder[index] = tableAt(remainder, index, "RS remainder") ^
+          gfMultiply(tableAt(generator, index + 1, "RS generator"), factor);
       }
     }
   }
@@ -149,12 +151,15 @@ class BitBuffer {
 
     const codewords = new Uint8Array(capacityBits / 8);
     for (let index = 0; index < this.bits.length; index += 1) {
-      if (this.bits[index]) codewords[index >>> 3] |= 0x80 >>> (index & 7);
+      if (tableAt(this.bits, index, "QR bit buffer")) {
+        const codewordIndex = index >>> 3;
+        codewords[codewordIndex] = tableAt(codewords, codewordIndex, "data codeword") | (0x80 >>> (index & 7));
+      }
     }
     // Alternating pad codewords fill the remainder.
-    const padBytes = [0xec, 0x11];
+    const padBytes = [0xec, 0x11] as const;
     for (let index = this.bits.length / 8, pad = 0; index < codewords.length; index += 1, pad += 1) {
-      codewords[index] = padBytes[pad % 2];
+      codewords[index] = tableAt(padBytes, pad % 2, "pad codeword");
     }
     return codewords;
   }
@@ -167,6 +172,30 @@ class BitBuffer {
 // function. Keeping darkness in bit 0 lets every reader use `& 1`, while
 // `>= 2` identifies the cells the data and mask passes must leave alone.
 type Matrix = Uint8Array[];
+
+function rowAt(matrix: Matrix, row: number): Uint8Array {
+  const value = matrix[row];
+  if (!value) throw new RangeError(`QR row ${row} is outside the matrix`);
+  return value;
+}
+
+function moduleAt(matrix: Matrix, row: number, col: number): number {
+  const value = rowAt(matrix, row)[col];
+  if (value === undefined) throw new RangeError(`QR column ${col} is outside row ${row}`);
+  return value;
+}
+
+function setModule(matrix: Matrix, row: number, col: number, value: number) {
+  const target = rowAt(matrix, row);
+  if (target[col] === undefined) throw new RangeError(`QR column ${col} is outside row ${row}`);
+  target[col] = value;
+}
+
+function tableAt<T>(values: ArrayLike<T>, index: number, label: string): T {
+  const value = values[index];
+  if (value === undefined) throw new RangeError(`${label} index ${index} is out of range`);
+  return value;
+}
 
 function createMatrix(size: number): Matrix {
   return Array.from({ length: size }, () => new Uint8Array(size));
@@ -181,7 +210,7 @@ function finderPattern(m: Matrix, row: number, col: number) {
       const dark =
         dr >= 0 && dr <= 6 && dc >= 0 && dc <= 6 &&
         (dr === 0 || dr === 6 || dc === 0 || dc === 6 || (dr >= 2 && dr <= 4 && dc >= 2 && dc <= 4));
-      m[r][c] = dark ? 3 : 2;
+      setModule(m, r, c, dark ? 3 : 2);
     }
   }
 }
@@ -189,8 +218,8 @@ function finderPattern(m: Matrix, row: number, col: number) {
 function timingPattern(m: Matrix) {
   for (let index = 8; index <= m.length - 9; index += 1) {
     const value = index % 2 === 0 ? 3 : 2;
-    m[6][index] = value;
-    m[index][6] = value;
+    setModule(m, 6, index, value);
+    setModule(m, index, 6, value);
   }
 }
 
@@ -198,11 +227,11 @@ function alignmentPatterns(m: Matrix, centers: readonly number[]) {
   for (const cr of centers) {
     for (const cc of centers) {
       // Centres overlapping a finder pattern are skipped by the spec.
-      if (m[cr][cc] !== 0) continue;
+      if (moduleAt(m, cr, cc) !== 0) continue;
       for (let dr = -2; dr <= 2; dr += 1) {
         for (let dc = -2; dc <= 2; dc += 1) {
           const dark = Math.abs(dr) === 2 || Math.abs(dc) === 2 || (dr === 0 && dc === 0);
-          m[cr + dr][cc + dc] = dark ? 3 : 2;
+          setModule(m, cr + dr, cc + dc, dark ? 3 : 2);
         }
       }
     }
@@ -213,12 +242,12 @@ function alignmentPatterns(m: Matrix, centers: readonly number[]) {
 function reserveFormatAreas(m: Matrix) {
   const size = m.length;
   for (let index = 0; index <= 8; index += 1) {
-    if (m[8][index] === 0) m[8][index] = 2;
-    if (m[index][8] === 0) m[index][8] = 2;
-    if (m[8][size - 1 - index] === 0) m[8][size - 1 - index] = 2;
-    if (m[size - 1 - index][8] === 0) m[size - 1 - index][8] = 2;
+    if (moduleAt(m, 8, index) === 0) setModule(m, 8, index, 2);
+    if (moduleAt(m, index, 8) === 0) setModule(m, index, 8, 2);
+    if (moduleAt(m, 8, size - 1 - index) === 0) setModule(m, 8, size - 1 - index, 2);
+    if (moduleAt(m, size - 1 - index, 8) === 0) setModule(m, size - 1 - index, 8, 2);
   }
-  m[size - 8][8] = 3;
+  setModule(m, size - 8, 8, 3);
 }
 
 function placeVersionInfo(m: Matrix, version: number) {
@@ -229,8 +258,8 @@ function placeVersionInfo(m: Matrix, version: number) {
     const value = (bits >>> index) & 1 ? 3 : 2;
     const row = Math.floor(index / 3);
     const col = index % 3;
-    m[row][size - 11 + col] = value;
-    m[size - 11 + col][row] = value;
+    setModule(m, row, size - 11 + col, value);
+    setModule(m, size - 11 + col, row, value);
   }
 }
 
@@ -246,9 +275,11 @@ function placeData(m: Matrix, codewords: Uint8Array) {
       const row = upward ? size - 1 - offset : offset;
       for (let inner = 0; inner <= 1; inner += 1) {
         const c = col - inner;
-        if (m[row][c] !== 0) continue;
-        const bit = bitIndex < totalBits ? (codewords[bitIndex >>> 3] >>> (7 - (bitIndex & 7))) & 1 : 0;
-        m[row][c] = bit;
+        if (moduleAt(m, row, c) !== 0) continue;
+        const bit = bitIndex < totalBits
+          ? (tableAt(codewords, bitIndex >>> 3, "interleaved codeword") >>> (7 - (bitIndex & 7))) & 1
+          : 0;
+        setModule(m, row, c, bit);
         bitIndex += 1;
       }
     }
@@ -268,10 +299,11 @@ const MASK_PREDICATES: ReadonlyArray<(row: number, col: number) => boolean> = [
 ];
 
 function applyMask(m: Matrix, mask: number) {
-  const predicate = MASK_PREDICATES[mask];
+  const predicate = tableAt(MASK_PREDICATES, mask, "QR mask");
   for (let row = 0; row < m.length; row += 1) {
     for (let col = 0; col < m.length; col += 1) {
-      if (m[row][col] < 2 && predicate(row, col)) m[row][col] ^= 1;
+      const value = moduleAt(m, row, col);
+      if (value < 2 && predicate(row, col)) setModule(m, row, col, value ^ 1);
     }
   }
 }
@@ -281,18 +313,18 @@ function placeFormatBits(m: Matrix, mask: number) {
   const size = m.length;
   // Bit i of the format string maps to these coordinates along row 8 and
   // column 8; the split skips the timing module at index 6 and the dark module.
-  const primary = [0, 1, 2, 3, 4, 5, 7, 8];
+  const primary = [0, 1, 2, 3, 4, 5, 7, 8] as const;
   for (let index = 0; index < 15; index += 1) {
     const value = (bits >>> index) & 1 ? 3 : 2;
     if (index < 8) {
-      m[8][size - 1 - index] = value;
-      m[primary[index]][8] = value;
+      setModule(m, 8, size - 1 - index, value);
+      setModule(m, tableAt(primary, index, "format coordinate"), 8, value);
     } else {
-      m[8][primary[14 - index]] = value;
-      m[size - 15 + index][8] = value;
+      setModule(m, 8, tableAt(primary, 14 - index, "format coordinate"), value);
+      setModule(m, size - 15 + index, 8, value);
     }
   }
-  m[size - 8][8] = 3;
+  setModule(m, size - 8, 8, 3);
 }
 
 /** ISO/IEC 18004 penalty rules 1 through 4, used to pick the best mask. */
@@ -303,9 +335,9 @@ function penaltyScore(m: Matrix): number {
   for (let line = 0; line < size; line += 1) {
     for (const horizontal of [true, false]) {
       let run = 1;
-      let previous = (horizontal ? m[line][0] : m[0][line]) & 1;
+      let previous = (horizontal ? moduleAt(m, line, 0) : moduleAt(m, 0, line)) & 1;
       for (let index = 1; index < size; index += 1) {
-        const value = (horizontal ? m[line][index] : m[index][line]) & 1;
+        const value = (horizontal ? moduleAt(m, line, index) : moduleAt(m, index, line)) & 1;
         if (value === previous) {
           run += 1;
           continue;
@@ -320,8 +352,8 @@ function penaltyScore(m: Matrix): number {
 
   for (let row = 0; row < size - 1; row += 1) {
     for (let col = 0; col < size - 1; col += 1) {
-      const value = m[row][col] & 1;
-      if ((m[row][col + 1] & 1) === value && (m[row + 1][col] & 1) === value && (m[row + 1][col + 1] & 1) === value) {
+      const value = moduleAt(m, row, col) & 1;
+      if ((moduleAt(m, row, col + 1) & 1) === value && (moduleAt(m, row + 1, col) & 1) === value && (moduleAt(m, row + 1, col + 1) & 1) === value) {
         score += 3;
       }
     }
@@ -331,8 +363,8 @@ function penaltyScore(m: Matrix): number {
   const reversed = [...finderLike].reverse();
   for (let line = 0; line < size; line += 1) {
     for (let start = 0; start <= size - 11; start += 1) {
-      const row = (offset: number) => m[line][start + offset] & 1;
-      const col = (offset: number) => m[start + offset][line] & 1;
+      const row = (offset: number) => moduleAt(m, line, start + offset) & 1;
+      const col = (offset: number) => moduleAt(m, start + offset, line) & 1;
       if (finderLike.every((v, i) => row(i) === v) || reversed.every((v, i) => row(i) === v)) score += 40;
       if (finderLike.every((v, i) => col(i) === v) || reversed.every((v, i) => col(i) === v)) score += 40;
     }
@@ -340,7 +372,7 @@ function penaltyScore(m: Matrix): number {
 
   let dark = 0;
   for (let row = 0; row < size; row += 1) {
-    for (let col = 0; col < size; col += 1) if (m[row][col] & 1) dark += 1;
+    for (let col = 0; col < size; col += 1) if (moduleAt(m, row, col) & 1) dark += 1;
   }
   const percent = (dark * 100) / (size * size);
   const deviation = Math.floor(Math.abs(percent - 50) / 5);
@@ -380,14 +412,15 @@ export function encodeQR(text: string, options: QrOptions = {}): boolean[][] {
   buffer.push(bytes.length, version < 10 ? 8 : 16);
   for (const byte of bytes) buffer.push(byte, 8);
 
-  const totalData = DATA_CODEWORDS_M[versionIndex];
+  const totalData = tableAt(DATA_CODEWORDS_M, versionIndex, "data capacity");
   const codewords = buffer.toCodewords(totalData * 8);
-  const ecPerBlock = EC_CODEWORDS_PER_BLOCK_M[versionIndex];
+  const ecPerBlock = tableAt(EC_CODEWORDS_PER_BLOCK_M, versionIndex, "EC block size");
+  const blockSpec = tableAt(EC_BLOCKS_M, versionIndex, "EC block specification");
 
   const dataBlocks: Uint8Array[] = [];
   const ecBlocks: Uint8Array[] = [];
   let offset = 0;
-  for (const [count, blockLength] of EC_BLOCKS_M[versionIndex]) {
+  for (const [count, blockLength] of blockSpec) {
     for (let block = 0; block < count; block += 1) {
       const slice = codewords.slice(offset, offset + blockLength);
       dataBlocks.push(slice);
@@ -400,10 +433,10 @@ export function encodeQR(text: string, options: QrOptions = {}): boolean[][] {
   const interleaved: number[] = [];
   const longestBlock = Math.max(...dataBlocks.map((block) => block.length));
   for (let index = 0; index < longestBlock; index += 1) {
-    for (const block of dataBlocks) if (index < block.length) interleaved.push(block[index]);
+    for (const block of dataBlocks) if (index < block.length) interleaved.push(tableAt(block, index, "data block"));
   }
   for (let index = 0; index < ecPerBlock; index += 1) {
-    for (const block of ecBlocks) interleaved.push(block[index]);
+    for (const block of ecBlocks) interleaved.push(tableAt(block, index, "EC block"));
   }
   const finalCodewords = new Uint8Array(interleaved);
 
@@ -413,7 +446,7 @@ export function encodeQR(text: string, options: QrOptions = {}): boolean[][] {
   finderPattern(template, 0, size - 7);
   finderPattern(template, size - 7, 0);
   timingPattern(template);
-  alignmentPatterns(template, ALIGNMENT_CENTERS[versionIndex]);
+  alignmentPatterns(template, tableAt(ALIGNMENT_CENTERS, versionIndex, "alignment centers"));
   reserveFormatAreas(template);
   placeVersionInfo(template, version);
 
@@ -437,7 +470,7 @@ export function encodeQR(text: string, options: QrOptions = {}): boolean[][] {
       const r = row - quiet;
       const c = col - quiet;
       if (r < 0 || r >= size || c < 0 || c >= size) return false;
-      return (best[r][c] & 1) === 1;
+      return (moduleAt(best, r, c) & 1) === 1;
     }),
   );
 }
@@ -446,8 +479,9 @@ export function encodeQR(text: string, options: QrOptions = {}): boolean[][] {
 export function qrToSvgPath(matrix: boolean[][]): string {
   const parts: string[] = [];
   for (let row = 0; row < matrix.length; row += 1) {
-    for (let col = 0; col < matrix[row].length; col += 1) {
-      if (matrix[row][col]) parts.push(`M${col} ${row}h1v1h-1z`);
+    const modules = tableAt(matrix, row, "SVG row");
+    for (let col = 0; col < modules.length; col += 1) {
+      if (tableAt(modules, col, "SVG module")) parts.push(`M${col} ${row}h1v1h-1z`);
     }
   }
   return parts.join("");
