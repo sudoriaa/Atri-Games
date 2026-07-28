@@ -145,7 +145,7 @@
 
 	# Preserve old bookmarks without retaining the obsolete 8081 Game Origin.
 	@legacyPlayableRoot path_regexp legacyPlayableRoot ^/playables/([a-z0-9]+(?:-[a-z0-9]+)*)(?:/index\.html)?/?$
-	redir @legacyPlayableRoot /games/{re.legacyPlayableRoot.1}/play 308
+	redir @legacyPlayableRoot /games/{re.legacyPlayableRoot.1}/play/ 308
 	@legacyPlayableAsset path_regexp legacyPlayableAsset ^/playables/([a-z0-9]+(?:-[a-z0-9]+)*)/(.+)$
 	redir @legacyPlayableAsset /games/{re.legacyPlayableAsset.1}/play/{re.legacyPlayableAsset.2} 308
 
