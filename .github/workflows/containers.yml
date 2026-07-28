@@ -95,10 +95,14 @@ jobs:
 
           game_headers="$(mktemp)"
           game_body="$(mktemp)"
+          canonical_headers="$(curl --silent --show-error --head http://127.0.0.1:18080/games/ci-route/play)"
+          grep --quiet '^HTTP/1.1 308' <<<"${canonical_headers}"
+          grep --ignore-case --quiet '^location: /games/ci-route/play/' <<<"${canonical_headers}"
+
           curl --fail --silent --show-error \
             --dump-header "${game_headers}" \
             --output "${game_body}" \
-            http://127.0.0.1:18080/games/ci-route/play
+            http://127.0.0.1:18080/games/ci-route/play/
           grep --quiet 'ATRI_CI_PLAYABLE' "${game_body}"
           grep --ignore-case --quiet '^content-security-policy: sandbox ' "${game_headers}"
           if grep --ignore-case '^content-security-policy:' "${game_headers}" | grep --quiet 'allow-same-origin'; then
@@ -113,7 +117,7 @@ jobs:
             | grep --quiet 'ATRI_CI_PLAYABLE'
           legacy_headers="$(curl --silent --show-error --head http://127.0.0.1:18080/playables/ci-route/index.html)"
           grep --quiet '^HTTP/1.1 308' <<<"${legacy_headers}"
-          grep --ignore-case --quiet '^location: /games/ci-route/play' <<<"${legacy_headers}"
+          grep --ignore-case --quiet '^location: /games/ci-route/play/' <<<"${legacy_headers}"
           if curl --silent --show-error --max-time 2 --output /dev/null http://127.0.0.1:18081/; then
             echo 'obsolete game port 18081 is still reachable' >&2
             exit 1

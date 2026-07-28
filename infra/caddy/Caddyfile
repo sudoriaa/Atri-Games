@@ -12,7 +12,10 @@
 
 	encode zstd gzip
 
-	header {
+	@portalHeaders {
+		not path_regexp gameResponse ^/games/[a-z0-9]+(?:-[a-z0-9]+)*/play(?:/.*)?$
+	}
+	header @portalHeaders {
 		-Server
 		Content-Security-Policy "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self' data:; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: blob: https:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'"
 		Cross-Origin-Opener-Policy "same-origin"
@@ -88,7 +91,10 @@
 	# without allow-same-origin. The browser therefore gives their scripts an
 	# opaque origin: they cannot read portal localStorage or cookies, while
 	# relative assets and game-ticket API requests remain available.
-	@gamePlayRoot path_regexp gamePlayRoot ^/games/([a-z0-9]+(?:-[a-z0-9]+)*)/play/?$
+	@gamePlayCanonical path_regexp gamePlayCanonical ^/games/([a-z0-9]+(?:-[a-z0-9]+)*)/play$
+	redir @gamePlayCanonical /games/{re.gamePlayCanonical.1}/play/ 308
+
+	@gamePlayRoot path_regexp gamePlayRoot ^/games/([a-z0-9]+(?:-[a-z0-9]+)*)/play/$
 	handle @gamePlayRoot {
 		root * /assets
 		rewrite * /playables/{re.gamePlayRoot.1}/index.html
