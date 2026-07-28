@@ -1,0 +1,35 @@
+# Dependencies and build output
+node_modules/
+.tools/
+.next/
+out/
+dist/
+coverage/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs and local caches
+*.log
+.turbo/
+.pnpm-store/
+
+# Game engine generated files and platform-hosted artifacts
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+artifacts/
+/data/
+*.db
+*.db-shm
+*.db-wal

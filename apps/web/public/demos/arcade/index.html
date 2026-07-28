@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#111014" />
+    <meta name="description" content="Atri Games 独立试玩页" />
+    <title>Atri Games · 独立试玩</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="返回 Atri Games">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i></span>
+          <span><b>ATRI</b><small>GAMES</small></span>
+        </a>
+        <a class="back-link" id="back-link" href="/">← 返回游戏展馆</a>
+      </header>
+
+      <main>
+        <section class="intro">
+          <p class="eyebrow" id="game-eyebrow">PLAYABLE WEB EXPERIMENT</p>
+          <h1 id="game-title">正在载入世界</h1>
+          <p id="game-intro">这是一个无需安装、可以独立打开的浏览器试玩页。</p>
+        </section>
+
+        <section class="game-frame" id="game-frame">
+          <div class="hud" aria-live="polite">
+            <div><small>得分</small><strong id="score">0000</strong></div>
+            <div><small>连击</small><strong id="combo">×1</strong></div>
+            <div><small>剩余</small><strong id="time">45.0</strong></div>
+          </div>
+
+          <div class="canvas-wrap">
+            <canvas id="game-canvas" aria-label="试玩游戏画布"></canvas>
+            <div class="screen" id="start-screen">
+              <p class="screen-kicker">INSTANT PLAY · NO INSTALL</p>
+              <h2 id="screen-title">准备好了吗？</h2>
+              <p id="game-goal">移动光点，收集能量节点，并避开失真区域。</p>
+              <button id="start-button" type="button">开始试玩 <span>→</span></button>
+              <small>键盘 WASD / 方向键 · 鼠标或触屏拖动</small>
+            </div>
+            <div class="screen screen--hidden" id="result-screen">
+              <p class="screen-kicker">RUN COMPLETE</p>
+              <h2>这段旅程完成了。</h2>
+              <p>本轮得分 <strong id="final-score">0</strong>，最高连击 <strong id="best-combo">×1</strong>。</p>
+              <button id="restart-button" type="button">再玩一次 <span>↻</span></button>
+              <a href="/" class="screen-link">回到 Atri Games</a>
+            </div>
+          </div>
+
+          <footer class="game-notes">
+            <p><span class="status-dot"></span> 独立 Web App 正在运行</p>
+            <p id="game-note">所有逻辑都在这个页面内执行，没有嵌入门户播放器。</p>
+          </footer>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="./game.js"></script>
+  </body>
+</html>

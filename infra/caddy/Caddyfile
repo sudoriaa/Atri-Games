@@ -1,0 +1,225 @@
+{
+	http_port 8080
+	https_port 8443
+	admin 127.0.0.1:2019
+}
+
+{$ATRI_SITE_ADDRESS:http://:8080} {
+	log {
+		output stdout
+		format json
+	}
+
+	encode zstd gzip
+
+	header {
+		-Server
+		Content-Security-Policy "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self' data:; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: blob: https:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+		Cross-Origin-Opener-Policy "same-origin"
+		Permissions-Policy "camera=(), geolocation=(), microphone=(), payment=(), usb=()"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		X-XSS-Protection "0"
+	}
+
+	@api path /api /api/*
+	@gameImport path /api/v1/admin/games/import
+	handle @gameImport {
+		request_body {
+			max_size {$ATRI_GAME_PACKAGE_MAX_SIZE:513MB}
+		}
+
+		reverse_proxy api:8080 {
+			lb_try_duration 5s
+			health_uri /api/v1/health
+			health_interval 30s
+			health_timeout 3s
+
+			transport http {
+				dial_timeout 3s
+				response_header_timeout 10m
+			}
+		}
+	}
+
+	@gameCoverMutation {
+		path /api/v1/admin/games /api/v1/admin/games/*
+		header Content-Type multipart/form-data*
+	}
+	handle @gameCoverMutation {
+		request_body {
+			max_size {$ATRI_GAME_COVER_MAX_SIZE:12MB}
+		}
+
+		reverse_proxy api:8080 {
+			lb_try_duration 5s
+			health_uri /api/v1/health
+			health_interval 30s
+			health_timeout 3s
+
+			transport http {
+				dial_timeout 3s
+				response_header_timeout 35s
+			}
+		}
+	}
+
+	handle @api {
+		request_body {
+			max_size 2MB
+		}
+
+		reverse_proxy api:8080 {
+			lb_try_duration 5s
+			health_uri /api/v1/health
+			health_interval 30s
+			health_timeout 3s
+
+			transport http {
+				dial_timeout 3s
+				response_header_timeout 35s
+			}
+		}
+	}
+
+	@playables path /playables /playables/*
+	redir @playables {$ATRI_GAME_PUBLIC_ORIGIN:http://localhost:8081}{uri} 307
+
+	@managedAssets path /covers /covers/* /demos /demos/*
+	handle @managedAssets {
+		root * /assets
+		header Cache-Control "no-cache"
+		file_server
+	}
+
+	@sdk path /sdk/atri-game-sdk.js
+	handle @sdk {
+		root * /srv/web
+		header Access-Control-Allow-Origin "*"
+		header Cache-Control "public, max-age=300"
+		file_server
+	}
+
+	@runtimeBootstrap path /sdk/atri-game-runtime-bootstrap.js
+	handle @runtimeBootstrap {
+		root * /srv/web
+		header Access-Control-Allow-Origin "*"
+		header Cache-Control "public, max-age=300"
+		file_server
+	}
+
+	@adminRoot path /admin
+	redir @adminRoot /admin/ 308
+
+	handle_path /admin/* {
+		root * /srv/admin
+
+		handle /assets/* {
+			header Cache-Control "public, max-age=31536000, immutable"
+			file_server
+		}
+
+		handle {
+			header Cache-Control "no-cache"
+			try_files {path} /index.html
+			file_server
+		}
+	}
+
+	handle {
+		root * /srv/web
+
+		handle /assets/* {
+			header Cache-Control "public, max-age=31536000, immutable"
+			file_server
+		}
+
+		handle {
+			header Cache-Control "no-cache"
+			try_files {path} /index.html
+			file_server
+		}
+	}
+}
+
+{$ATRI_GAME_SITE_ADDRESS:http://:8081} {
+	log {
+		output stdout
+		format json
+	}
+
+	header {
+		-Server
+		Referrer-Policy "no-referrer"
+		X-Content-Type-Options "nosniff"
+	}
+
+	@brotliAsset path *.br
+	header @brotliAsset Content-Encoding "br"
+	@gzipAsset path *.gz
+	header @gzipAsset Content-Encoding "gzip"
+
+	@sdk path /sdk/atri-game-sdk.js
+	handle @sdk {
+		root * /srv/web
+		header Access-Control-Allow-Origin "*"
+		header Cache-Control "public, max-age=300"
+		file_server
+	}
+
+	@runtimeBootstrap path /sdk/atri-game-runtime-bootstrap.js
+	handle @runtimeBootstrap {
+		root * /srv/web
+		header Access-Control-Allow-Origin "*"
+		header Cache-Control "public, max-age=300"
+		file_server
+	}
+
+	# Keep the runtime bridge simple for package authors: a game served from
+	# Game Origin can call the platform API with relative `/api/v1/...` URLs.
+	# The short-lived game ticket is still required by storage/matchmaking
+	# endpoints, while ordinary public catalog routes remain read-only.
+	@runtimeAPI path /api /api/*
+	handle @runtimeAPI {
+		request_body {
+			max_size 2MB
+		}
+
+		reverse_proxy api:8080 {
+			lb_try_duration 5s
+			health_uri /api/v1/health
+			health_interval 30s
+			health_timeout 3s
+
+			transport http {
+				dial_timeout 3s
+				response_header_timeout 35s
+			}
+		}
+	}
+
+	@wasmBrotli path *.wasm.br
+	header @wasmBrotli Content-Type "application/wasm"
+	@wasmGzip path *.wasm.gz
+	header @wasmGzip Content-Type "application/wasm"
+	@javascriptBrotli path *.js.br
+	header @javascriptBrotli Content-Type "text/javascript; charset=utf-8"
+	@javascriptGzip path *.js.gz
+	header @javascriptGzip Content-Type "text/javascript; charset=utf-8"
+	@dataBrotli path *.data.br
+	header @dataBrotli Content-Type "application/octet-stream"
+	@dataGzip path *.data.gz
+	header @dataGzip Content-Type "application/octet-stream"
+
+	@playable path_regexp playable ^/playables/([^/]+)(?:/.*)?$
+	handle @playable {
+		root * /assets
+		header Cache-Control "no-cache"
+		try_files {path} /playables/{re.playable.1}/index.html
+		file_server
+	}
+
+	respond 404
+}

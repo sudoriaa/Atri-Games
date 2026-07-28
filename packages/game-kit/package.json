@@ -1,0 +1,31 @@
+{
+  "name": "@atri/game-kit",
+  "version": "0.1.0",
+  "description": "Zero-dependency manifest validator and encrypted .atri package builder for Atri Games.",
+  "type": "module",
+  "files": [
+    "src",
+    "keys",
+    "README.md"
+  ],
+  "bin": {
+    "atri-game": "./src/cli.mjs"
+  },
+  "exports": {
+    ".": "./src/manifest.mjs",
+    "./zip": "./src/zip.mjs",
+    "./encryption": "./src/encryption.mjs"
+  },
+  "scripts": {
+    "typecheck": "node --check src/cli.mjs && node --check src/encryption.mjs && node --check src/manifest.mjs && node --check src/zip.mjs",
+    "test": "node --test",
+    "build": "node --check src/cli.mjs && node --check src/encryption.mjs && node --check src/manifest.mjs && node --check src/zip.mjs"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT"
+}

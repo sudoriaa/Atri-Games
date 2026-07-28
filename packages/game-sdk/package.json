@@ -1,0 +1,28 @@
+{
+  "name": "@atri/game-sdk",
+  "version": "0.1.0",
+  "description": "Optional, zero-dependency browser bridge for Atri Games.",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "src"
+  ],
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "node --check src/index.js",
+    "test": "node --test",
+    "build": "node --check src/index.js"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT"
+}

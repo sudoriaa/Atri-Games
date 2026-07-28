@@ -1,0 +1,95 @@
+name: Production containers
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/containers.yml"
+      - ".dockerignore"
+      - "Dockerfile"
+      - "docker-compose.yml"
+      - "infra/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".npmrc"
+      - "tsconfig.base.json"
+      - "apps/**"
+      - "packages/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/containers.yml"
+      - ".dockerignore"
+      - "Dockerfile"
+      - "docker-compose.yml"
+      - "infra/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".npmrc"
+      - "tsconfig.base.json"
+      - "apps/**"
+      - "packages/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: containers-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      ATRI_SITE_ADDRESS: "http://:8080"
+      ATRI_GAME_SITE_ADDRESS: "http://:8081"
+      ATRI_GAME_PUBLIC_ORIGIN: "http://127.0.0.1:18081"
+      ATRI_HTTP_PORT: "18080"
+      ATRI_GAME_HTTP_PORT: "18081"
+      ATRI_HTTPS_PORT: "18443"
+      ATRI_CORS_ORIGINS: "http://127.0.0.1:18080"
+      ATRI_JWT_SECRET: "ci-only-jwt-secret-with-at-least-32-characters"
+      ATRI_ADMIN_EMAIL: "admin@atri.invalid"
+      ATRI_ADMIN_PASSWORD: "ci-only-admin-password"
+      ATRI_IMAGE_TAG: "ci"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Enable BuildKit
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate Compose model
+        run: docker compose config --quiet
+
+      - name: Build production images
+        run: docker compose build --pull
+
+      - name: Start production stack
+        run: docker compose up --detach --wait --wait-timeout 90
+
+      - name: Smoke test routes and headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          health="$(curl --fail --silent --show-error --retry 5 --retry-connrefused http://127.0.0.1:18080/api/v1/health)"
+          grep -q '"status":"ok"' <<<"${health}"
+          curl --fail --silent --show-error --output /dev/null http://127.0.0.1:18080/
+          curl --fail --silent --show-error --output /dev/null http://127.0.0.1:18080/discover
+          curl --fail --silent --show-error --output /dev/null http://127.0.0.1:18080/admin/
+          curl --fail --silent --show-error --output /dev/null http://127.0.0.1:18080/admin/games
+          curl --fail --silent --show-error --head http://127.0.0.1:18080/ \
+            | grep --ignore-case --quiet '^x-content-type-options: nosniff'
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Stop production stack
+        if: always()
+        run: docker compose down --volumes --remove-orphans

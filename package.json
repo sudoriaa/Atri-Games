@@ -1,0 +1,20 @@
+{
+  "name": "atri-games",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.32.1",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev:web": "pnpm --filter @atri/web dev",
+    "dev:admin": "pnpm --filter @atri/admin dev",
+    "dev:api": "go -C apps/api run ./cmd/server",
+    "game-kit": "node packages/game-kit/src/cli.mjs",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "api:test": "go -C apps/api test ./...",
+    "check": "pnpm typecheck && pnpm test && pnpm build"
+  }
+}

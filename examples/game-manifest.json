@@ -1,0 +1,77 @@
+{
+  "$schema": "../schemas/game-manifest.schema.json",
+  "schemaVersion": 2,
+  "id": "example-online-puzzle",
+  "version": "0.1.0",
+  "title": "Example Online Puzzle",
+  "summary": "A technology-neutral game package for the Atri Games catalog.",
+  "description": "Replace this text with the objective, controls, supported devices, and any online behavior players should know about.",
+  "authors": [
+    {
+      "name": "Example Developer",
+      "url": "https://example.com/developer"
+    }
+  ],
+  "license": "MIT",
+  "repository": "https://example.com/example-online-puzzle",
+  "homepage": "https://example.com/example-online-puzzle/about",
+  "engine": {
+    "name": "Custom Web",
+    "version": "1",
+    "framework": "Any frontend + any backend"
+  },
+  "runtime": {
+    "kind": "external",
+    "url": "https://example.com/example-online-puzzle/play",
+    "openIn": "same-tab"
+  },
+  "services": {
+    "networkRequired": true,
+    "ownBackend": true,
+    "realtime": [
+      "websocket"
+    ],
+    "platformIntegrations": [],
+    "identity": {
+      "mode": "none"
+    },
+    "storage": {
+      "provider": "none",
+      "scope": "game"
+    },
+    "matchmaking": {
+      "enabled": false,
+      "protocol": "http"
+    }
+  },
+  "privacy": {
+    "collectsPersonalData": false,
+    "dataSummary": "The example stores anonymous round state only while an active game is running."
+  },
+  "media": {
+    "cover": "cover.webp",
+    "screenshots": [
+      "screenshots/gameplay.webp"
+    ]
+  },
+  "compatibility": {
+    "devices": [
+      "desktop",
+      "mobile"
+    ],
+    "inputs": [
+      "keyboard",
+      "mouse",
+      "touch"
+    ],
+    "orientation": "any",
+    "minimumViewport": {
+      "width": 320,
+      "height": 480
+    }
+  },
+  "tags": [
+    "puzzle",
+    "online"
+  ]
+}

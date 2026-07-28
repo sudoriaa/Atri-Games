@@ -1,0 +1,472 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atri.games/schemas/game-manifest.schema.json",
+  "title": "Atri Games package manifest",
+  "description": "Technology-neutral metadata and runtime contract for an external or statically hosted web game.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "version",
+    "title",
+    "summary",
+    "description",
+    "authors",
+    "license",
+    "engine",
+    "runtime",
+    "services",
+    "privacy",
+    "media",
+    "compatibility",
+    "tags"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": 2
+    },
+    "id": {
+      "$ref": "#/$defs/slug"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 240
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "authors": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "url": {
+            "$ref": "#/$defs/httpsUrl"
+          }
+        }
+      }
+    },
+    "license": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "repository": {
+      "$ref": "#/$defs/httpsUrl"
+    },
+    "homepage": {
+      "$ref": "#/$defs/httpsUrl"
+    },
+    "engine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "version": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "framework": {
+          "type": "string",
+          "maxLength": 80
+        }
+      }
+    },
+    "runtime": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/externalRuntime"
+        },
+        {
+          "$ref": "#/$defs/staticRuntime"
+        }
+      ]
+    },
+    "services": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["networkRequired", "ownBackend"],
+      "properties": {
+        "networkRequired": {
+          "type": "boolean"
+        },
+        "ownBackend": {
+          "type": "boolean"
+        },
+        "realtime": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": ["websocket", "server-sent-events", "webrtc", "other"]
+          }
+        },
+        "platformIntegrations": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": ["lifecycle", "identity", "cloud-save", "achievements", "leaderboards", "webhooks"]
+          }
+        },
+        "identity": {
+          "$ref": "#/$defs/identityService",
+          "description": "Built-in player identity and short-lived game ticket policy."
+        },
+        "storage": {
+          "$ref": "#/$defs/storageService",
+          "description": "Optional platform storage namespace. Omit for the static-package default."
+        },
+        "matchmaking": {
+          "$ref": "#/$defs/matchmakingService",
+          "description": "Optional platform matchmaking ticket queue."
+        }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["collectsPersonalData", "dataSummary"],
+      "properties": {
+        "collectsPersonalData": {
+          "type": "boolean"
+        },
+        "policyUrl": {
+          "$ref": "#/$defs/httpsUrl"
+        },
+        "dataSummary": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 800
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "collectsPersonalData": {
+                "const": true
+              }
+            },
+            "required": ["collectsPersonalData"]
+          },
+          "then": {
+            "required": ["policyUrl"]
+          }
+        }
+      ]
+    },
+    "media": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cover"],
+      "properties": {
+        "cover": {
+          "$ref": "#/$defs/packageImagePath"
+        },
+        "screenshots": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/packageImagePath"
+          }
+        }
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["devices", "inputs", "orientation"],
+      "properties": {
+        "devices": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["desktop", "mobile", "tablet"]
+          }
+        },
+        "inputs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["keyboard", "mouse", "touch", "gamepad"]
+          }
+        },
+        "orientation": {
+          "enum": ["any", "landscape", "portrait"]
+        },
+        "minimumViewport": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "height"],
+          "properties": {
+            "width": {
+              "type": "integer",
+              "minimum": 240,
+              "maximum": 7680
+            },
+            "height": {
+              "type": "integer",
+              "minimum": 240,
+              "maximum": 4320
+            }
+          }
+        }
+      }
+    },
+    "tags": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 40
+      }
+    },
+    "ai": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tools", "disclosure"],
+      "properties": {
+        "tools": {
+          "type": "array",
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          }
+        },
+        "disclosure": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "runtime": {
+            "properties": {
+              "kind": {
+                "const": "external"
+              }
+            },
+            "required": ["kind"]
+          }
+        },
+        "required": ["runtime"]
+      },
+      "then": {
+        "properties": {
+          "services": {
+            "properties": {
+              "identity": {
+                "properties": {
+                  "mode": {
+                    "const": "none"
+                  }
+                }
+              },
+              "storage": {
+                "properties": {
+                  "provider": {
+                    "const": "none"
+                  },
+                  "scope": {
+                    "const": "game"
+                  }
+                }
+              },
+              "matchmaking": {
+                "properties": {
+                  "enabled": {
+                    "const": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "minLength": 3,
+      "maxLength": 64
+    },
+    "httpsUrl": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://"
+    },
+    "packagePath": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$",
+      "maxLength": 240
+    },
+    "packageImagePath": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/packagePath"
+        },
+        {
+          "pattern": "\\.(?:avif|jpe?g|png|webp)$"
+        }
+      ]
+    },
+    "externalRuntime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "url", "openIn"],
+      "properties": {
+        "kind": {
+          "const": "external"
+        },
+        "url": {
+          "$ref": "#/$defs/httpsUrl"
+        },
+        "openIn": {
+          "enum": ["same-tab", "new-tab"]
+        }
+      }
+    },
+    "staticRuntime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "entry", "openIn"],
+      "properties": {
+        "kind": {
+          "const": "static"
+        },
+        "entry": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/packagePath"
+            },
+            {
+              "pattern": "\\.[Hh][Tt][Mm][Ll]$"
+            }
+          ]
+        },
+        "openIn": {
+          "enum": ["same-tab", "new-tab"]
+        },
+        "bridge": {
+          "enum": ["none", "optional", "required"]
+        }
+      }
+    },
+    "identityService": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "enum": ["none", "optional", "required"]
+        }
+      }
+    },
+    "storageService": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "scope"],
+      "properties": {
+        "provider": {
+          "enum": ["none", "sqlite"]
+        },
+        "scope": {
+          "enum": ["player-game", "player", "game"]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "provider": {
+                "const": "none"
+              }
+            },
+            "required": ["provider"]
+          },
+          "then": {
+            "properties": {
+              "scope": {
+                "const": "game"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "provider": {
+                "const": "sqlite"
+              }
+            },
+            "required": ["provider"]
+          },
+          "then": {
+            "properties": {
+              "scope": {
+                "enum": ["player-game", "player"]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "matchmakingService": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "protocol"],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "protocol": {
+          "enum": ["websocket", "sse", "http"]
+        }
+      }
+    }
+  }
+}
