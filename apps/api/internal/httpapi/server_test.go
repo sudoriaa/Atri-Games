@@ -566,7 +566,7 @@ func TestAdminImportsAndDeletesStaticGamePackage(t *testing.T) {
 	requireStatus(t, importResponse, http.StatusCreated)
 	game := decodeResponse[data.Game](t, importResponse)
 	if game.Slug != "package-game" || game.CoverURL != "/covers/package-game/cover.webp" ||
-		game.LaunchURL != "/games/package-game/play" || game.LaunchOpenIn != "new-tab" || game.Engine != "WebAssembly / Custom" {
+		game.LaunchURL != "/games/package-game/play/" || game.LaunchOpenIn != "new-tab" || game.Engine != "WebAssembly / Custom" {
 		t.Fatalf("imported game = %+v", game)
 	}
 	if _, err := os.Stat(filepath.Join(api.assetRoot, "covers", "package-game", "cover.webp")); err != nil {
@@ -578,7 +578,7 @@ func TestAdminImportsAndDeletesStaticGamePackage(t *testing.T) {
 	requireStatus(t, api.request(t, http.MethodGet, "/api/v1/games/package-game", nil, ""), http.StatusOK)
 	launchResponse := api.request(t, http.MethodPost, "/api/v1/games/package-game/launch", nil, "")
 	requireStatus(t, launchResponse, http.StatusOK)
-	if launch := decodeResponse[map[string]string](t, launchResponse); launch["launchUrl"] != "/games/package-game/play" || launch["openIn"] != "new-tab" {
+	if launch := decodeResponse[map[string]string](t, launchResponse); launch["launchUrl"] != "/games/package-game/play/" || launch["openIn"] != "new-tab" {
 		t.Fatalf("launch response = %+v", launch)
 	}
 

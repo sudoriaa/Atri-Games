@@ -438,6 +438,80 @@ func TestInitialGameSeedRunsOnlyForANewDatabase(t *testing.T) {
 	})
 }
 
+func TestMigratePlayableURLsToGamePathCoversLegacyFormsAndIsIdempotent(t *testing.T) {
+	store := newTestStore(t)
+	fixtures := []struct {
+		slug string
+		url  string
+		want string
+	}{
+		{"legacy-root", "/playables/legacy-root", "/games/legacy-root/play/"},
+		{"legacy-slash", "/playables/legacy-slash/", "/games/legacy-slash/play/"},
+		{"legacy-index", "/playables/legacy-index/index.html", "/games/legacy-index/play/"},
+		{"legacy-nested", "/playables/legacy-nested/assets/main.js", "/games/legacy-nested/play/assets/main.js"},
+		{"legacy-query", "/playables/legacy-query/index.html?mode=demo", "/games/legacy-query/play/index.html?mode=demo"},
+	}
+	for _, fixture := range fixtures {
+		if _, err := store.db.Exec(`INSERT INTO games(
+			id,slug,title,summary,description,author_name,cover_url,launch_url,engine,version,status,category_id,tags_json
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			"game_"+fixture.slug, fixture.slug, "Title", "A valid summary for tests.", "Description",
+			"Author", "/covers/"+fixture.slug+".png", fixture.url, "Canvas", "1.0.0", "published", "arcade", "[]",
+		); err != nil {
+			t.Fatalf("insert %s: %v", fixture.slug, err)
+		}
+	}
+	if err := store.MigrateAndSeed("admin@example.test", "hash"); err != nil {
+		t.Fatalf("first migration: %v", err)
+	}
+	for _, fixture := range fixtures {
+		var got string
+		if err := store.db.QueryRow(`SELECT launch_url FROM games WHERE slug=?`, fixture.slug).Scan(&got); err != nil {
+			t.Fatalf("read %s: %v", fixture.slug, err)
+		}
+		if fixture.want != "" && got != fixture.want {
+			t.Fatalf("%s migrated URL = %q, want %q", fixture.slug, got, fixture.want)
+		}
+		if fixture.want == "" && got != fixture.url {
+			t.Fatalf("unexpected URL rewrite for %s: got %q", fixture.slug, got)
+		}
+	}
+	var before int
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM games WHERE launch_url LIKE '/games/%/play%'`).Scan(&before); err != nil {
+		t.Fatalf("count migrated URLs: %v", err)
+	}
+	if err := store.MigrateAndSeed("admin@example.test", "hash"); err != nil {
+		t.Fatalf("second migration: %v", err)
+	}
+	var after int
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM games WHERE launch_url LIKE '/games/%/play%'`).Scan(&after); err != nil {
+		t.Fatalf("count idempotent URLs: %v", err)
+	}
+	if before != after {
+		t.Fatalf("migration was not idempotent: before=%d after=%d", before, after)
+	}
+}
+
+func TestManagedAssetFromURLAcceptsGamePlayRootAndRejectsUnexpectedPaths(t *testing.T) {
+	cases := []struct {
+		url  string
+		ok   bool
+		want string
+	}{
+		{"/games/example-game/play", true, "playables/example-game"},
+		{"/games/example-game/play/", true, "playables/example-game"},
+		{"/games/example-game/play/assets/main.js", true, "playables/example-game"},
+		{"/games/example-game/about", false, ""},
+		{"/games/example-game/play/../other", false, ""},
+	}
+	for _, tc := range cases {
+		item, ok := managedAssetFromURL(tc.url, false)
+		if ok != tc.ok || (ok && item.relative != tc.want) {
+			t.Fatalf("managedAssetFromURL(%q) = (%+v,%v), want relative=%q ok=%v", tc.url, item, ok, tc.want, tc.ok)
+		}
+	}
+}
+
 func TestMigrateAndSeedMovesLegacySeedLaunchURLsToOwnedWrappers(t *testing.T) {
 	store := newTestStore(t)
 	const (

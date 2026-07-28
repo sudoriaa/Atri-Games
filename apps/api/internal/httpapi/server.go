@@ -751,7 +751,7 @@ func (s *Server) importGame(w http.ResponseWriter, r *http.Request) {
 	if manifest.Runtime.Kind == "static" {
 		entry := manifest.Runtime.Entry
 		if entry == "index.html" || entry == "" {
-			launchURL = "/games/" + manifest.ID + "/play"
+			launchURL = "/games/" + manifest.ID + "/play/"
 		} else {
 			launchURL = "/games/" + manifest.ID + "/play/" + entry
 		}

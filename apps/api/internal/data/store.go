@@ -487,14 +487,15 @@ func migratePlayableURLsToGamePath(tx *sql.Tx) error {
 		return err
 	}
 	for _, r := range updates {
-		prefix := "/playables/" + r.slug + "/"
+		root := "/playables/" + r.slug
+		prefix := root + "/"
 		var newURL string
-		if r.launchURL == "/playables/"+r.slug+"/index.html" || r.launchURL == "/playables/"+r.slug+"/" {
-			newURL = "/games/" + r.slug + "/play"
+		if r.launchURL == root || r.launchURL == prefix || r.launchURL == prefix+"index.html" {
+			newURL = "/games/" + r.slug + "/play/"
 		} else if strings.HasPrefix(r.launchURL, prefix) {
 			entry := strings.TrimPrefix(r.launchURL, prefix)
 			if entry == "index.html" {
-				newURL = "/games/" + r.slug + "/play"
+				newURL = "/games/" + r.slug + "/play/"
 			} else {
 				newURL = "/games/" + r.slug + "/play/" + entry
 			}
