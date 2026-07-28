@@ -70,6 +70,16 @@ jobs:
       - name: Start production stack
         run: docker compose up --detach --wait --wait-timeout 90
 
+      - name: Install route-test playable
+        run: |
+          docker compose exec -T api sh -ceu '
+            mkdir -p /assets/playables/ci-route/assets
+            printf "%s\n" "<!doctype html><title>CI playable</title><script src=\"./assets/game.js\"></script><p>ATRI_CI_PLAYABLE</p>" \
+              > /assets/playables/ci-route/index.html
+            printf "%s\n" "globalThis.ATRI_CI_ASSET = true;" \
+              > /assets/playables/ci-route/assets/game.js
+          '
+
       - name: Smoke test routes and headers
         shell: bash
         run: |
@@ -82,6 +92,33 @@ jobs:
           curl --fail --silent --show-error --output /dev/null http://127.0.0.1:18080/admin/games
           curl --fail --silent --show-error --head http://127.0.0.1:18080/ \
             | grep --ignore-case --quiet '^x-content-type-options: nosniff'
+
+          game_headers="$(mktemp)"
+          game_body="$(mktemp)"
+          curl --fail --silent --show-error \
+            --dump-header "${game_headers}" \
+            --output "${game_body}" \
+            http://127.0.0.1:18080/games/ci-route/play
+          grep --quiet 'ATRI_CI_PLAYABLE' "${game_body}"
+          grep --ignore-case --quiet '^content-security-policy: sandbox ' "${game_headers}"
+          if grep --ignore-case '^content-security-policy:' "${game_headers}" | grep --quiet 'allow-same-origin'; then
+            echo 'game sandbox unexpectedly grants allow-same-origin' >&2
+            exit 1
+          fi
+          grep --ignore-case --quiet '^access-control-allow-origin: \*' "${game_headers}"
+
+          curl --fail --silent --show-error http://127.0.0.1:18080/games/ci-route/play/assets/game.js \
+            | grep --quiet 'ATRI_CI_ASSET'
+          curl --fail --silent --show-error http://127.0.0.1:18080/games/ci-route/play/a/client/route \
+            | grep --quiet 'ATRI_CI_PLAYABLE'
+          legacy_headers="$(curl --silent --show-error --head http://127.0.0.1:18080/playables/ci-route/index.html)"
+          grep --quiet '^HTTP/1.1 308' <<<"${legacy_headers}"
+          grep --ignore-case --quiet '^location: /games/ci-route/play' <<<"${legacy_headers}"
+          if curl --silent --show-error --max-time 2 --output /dev/null http://127.0.0.1:18081/; then
+            echo 'obsolete game port 18081 is still reachable' >&2
+            exit 1
+          fi
+          rm -f "${game_headers}" "${game_body}"
 
       - name: Show container logs on failure
         if: failure()

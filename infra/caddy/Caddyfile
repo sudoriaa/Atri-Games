@@ -84,8 +84,64 @@
 		}
 	}
 
-	@playables path /playables /playables/*
-	redir @playables {$ATRI_GAME_PUBLIC_ORIGIN:http://localhost:8081}{uri} 307
+	# Static game packages live on the main host but execute in a CSP sandbox
+	# without allow-same-origin. The browser therefore gives their scripts an
+	# opaque origin: they cannot read portal localStorage or cookies, while
+	# relative assets and game-ticket API requests remain available.
+	@gamePlayRoot path_regexp gamePlayRoot ^/games/([a-z0-9]+(?:-[a-z0-9]+)*)/play/?$
+	handle @gamePlayRoot {
+		root * /assets
+		rewrite * /playables/{re.gamePlayRoot.1}/index.html
+		header {
+			Access-Control-Allow-Origin "*"
+			Cache-Control "no-cache"
+			Content-Security-Policy "sandbox allow-scripts allow-forms allow-modals allow-pointer-lock allow-popups allow-downloads allow-top-navigation-by-user-activation; default-src * data: blob:; base-uri 'none'; connect-src * data: blob:; font-src * data:; form-action *; frame-src *; img-src * data: blob:; media-src * data: blob:; object-src 'none'; script-src * 'unsafe-inline' 'unsafe-eval' blob:; style-src * 'unsafe-inline'; worker-src * data: blob:"
+			Cross-Origin-Opener-Policy "unsafe-none"
+			Cross-Origin-Resource-Policy "cross-origin"
+			Referrer-Policy "no-referrer"
+		}
+		file_server
+	}
+
+	@gamePlayAsset path_regexp gamePlayAsset ^/games/([a-z0-9]+(?:-[a-z0-9]+)*)/play/(.+)$
+	handle @gamePlayAsset {
+		root * /assets
+		rewrite * /playables/{re.gamePlayAsset.1}/{re.gamePlayAsset.2}
+
+		@wasmBrotli path *.wasm.br
+		header @wasmBrotli Content-Type "application/wasm"
+		@wasmGzip path *.wasm.gz
+		header @wasmGzip Content-Type "application/wasm"
+		@javascriptBrotli path *.js.br
+		header @javascriptBrotli Content-Type "text/javascript; charset=utf-8"
+		@javascriptGzip path *.js.gz
+		header @javascriptGzip Content-Type "text/javascript; charset=utf-8"
+		@dataBrotli path *.data.br
+		header @dataBrotli Content-Type "application/octet-stream"
+		@dataGzip path *.data.gz
+		header @dataGzip Content-Type "application/octet-stream"
+		@brotliAsset path *.br
+		header @brotliAsset Content-Encoding "br"
+		@gzipAsset path *.gz
+		header @gzipAsset Content-Encoding "gzip"
+
+		header {
+			Access-Control-Allow-Origin "*"
+			Cache-Control "no-cache"
+			Content-Security-Policy "sandbox allow-scripts allow-forms allow-modals allow-pointer-lock allow-popups allow-downloads allow-top-navigation-by-user-activation; default-src * data: blob:; base-uri 'none'; connect-src * data: blob:; font-src * data:; form-action *; frame-src *; img-src * data: blob:; media-src * data: blob:; object-src 'none'; script-src * 'unsafe-inline' 'unsafe-eval' blob:; style-src * 'unsafe-inline'; worker-src * data: blob:"
+			Cross-Origin-Opener-Policy "unsafe-none"
+			Cross-Origin-Resource-Policy "cross-origin"
+			Referrer-Policy "no-referrer"
+		}
+		try_files {path} /playables/{re.gamePlayAsset.1}/index.html
+		file_server
+	}
+
+	# Preserve old bookmarks without retaining the obsolete 8081 Game Origin.
+	@legacyPlayableRoot path_regexp legacyPlayableRoot ^/playables/([a-z0-9]+(?:-[a-z0-9]+)*)(?:/index\.html)?/?$
+	redir @legacyPlayableRoot /games/{re.legacyPlayableRoot.1}/play 308
+	@legacyPlayableAsset path_regexp legacyPlayableAsset ^/playables/([a-z0-9]+(?:-[a-z0-9]+)*)/(.+)$
+	redir @legacyPlayableAsset /games/{re.legacyPlayableAsset.1}/play/{re.legacyPlayableAsset.2} 308
 
 	@managedAssets path /covers /covers/* /demos /demos/*
 	handle @managedAssets {
@@ -142,84 +198,4 @@
 			file_server
 		}
 	}
-}
-
-{$ATRI_GAME_SITE_ADDRESS:http://:8081} {
-	log {
-		output stdout
-		format json
-	}
-
-	header {
-		-Server
-		Referrer-Policy "no-referrer"
-		X-Content-Type-Options "nosniff"
-	}
-
-	@brotliAsset path *.br
-	header @brotliAsset Content-Encoding "br"
-	@gzipAsset path *.gz
-	header @gzipAsset Content-Encoding "gzip"
-
-	@sdk path /sdk/atri-game-sdk.js
-	handle @sdk {
-		root * /srv/web
-		header Access-Control-Allow-Origin "*"
-		header Cache-Control "public, max-age=300"
-		file_server
-	}
-
-	@runtimeBootstrap path /sdk/atri-game-runtime-bootstrap.js
-	handle @runtimeBootstrap {
-		root * /srv/web
-		header Access-Control-Allow-Origin "*"
-		header Cache-Control "public, max-age=300"
-		file_server
-	}
-
-	# Keep the runtime bridge simple for package authors: a game served from
-	# Game Origin can call the platform API with relative `/api/v1/...` URLs.
-	# The short-lived game ticket is still required by storage/matchmaking
-	# endpoints, while ordinary public catalog routes remain read-only.
-	@runtimeAPI path /api /api/*
-	handle @runtimeAPI {
-		request_body {
-			max_size 2MB
-		}
-
-		reverse_proxy api:8080 {
-			lb_try_duration 5s
-			health_uri /api/v1/health
-			health_interval 30s
-			health_timeout 3s
-
-			transport http {
-				dial_timeout 3s
-				response_header_timeout 35s
-			}
-		}
-	}
-
-	@wasmBrotli path *.wasm.br
-	header @wasmBrotli Content-Type "application/wasm"
-	@wasmGzip path *.wasm.gz
-	header @wasmGzip Content-Type "application/wasm"
-	@javascriptBrotli path *.js.br
-	header @javascriptBrotli Content-Type "text/javascript; charset=utf-8"
-	@javascriptGzip path *.js.gz
-	header @javascriptGzip Content-Type "text/javascript; charset=utf-8"
-	@dataBrotli path *.data.br
-	header @dataBrotli Content-Type "application/octet-stream"
-	@dataGzip path *.data.gz
-	header @dataGzip Content-Type "application/octet-stream"
-
-	@playable path_regexp playable ^/playables/([^/]+)(?:/.*)?$
-	handle @playable {
-		root * /assets
-		header Cache-Control "no-cache"
-		try_files {path} /playables/{re.playable.1}/index.html
-		file_server
-	}
-
-	respond 404
 }
