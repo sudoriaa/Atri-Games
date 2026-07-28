@@ -16,6 +16,7 @@ interface ShareDialogProps {
 
 /** Wraps text to the given pixel width and returns at most `maxLines` lines. */
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number) {
+  if (maxLines <= 0) return [];
   const lines: string[] = [];
   let current = "";
   // CJK text has no spaces to break on, so wrap per character. Latin words stay

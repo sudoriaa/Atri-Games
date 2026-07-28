@@ -144,6 +144,9 @@ class BitBuffer {
 
   /** Pads to a byte boundary and returns the codeword sequence. */
   toCodewords(capacityBits: number): Uint8Array {
+    if (this.bits.length > capacityBits) {
+      throw new RangeError(`QR bit buffer exceeds its ${capacityBits}-bit capacity`);
+    }
     // Terminator, at most four zero bits.
     const terminator = Math.min(4, capacityBits - this.bits.length);
     for (let index = 0; index < terminator; index += 1) this.bits.push(0);
@@ -390,7 +393,7 @@ export interface QrOptions {
 
 export class QrPayloadTooLongError extends RangeError {
   constructor(byteLength: number) {
-    super(`二维码内容过长：${byteLength} 字节，上限 216 字节`);
+    super(`二维码内容过长：${byteLength} 字节，上限 213 字节`);
     this.name = "QrPayloadTooLongError";
   }
 }
@@ -403,7 +406,11 @@ export function encodeQR(text: string, options: QrOptions = {}): boolean[][] {
   const quiet = options.quiet ?? 4;
   const bytes = new TextEncoder().encode(text);
 
-  const versionIndex = DATA_CODEWORDS_M.findIndex((capacity) => capacity >= bytes.length + 2);
+  const versionIndex = DATA_CODEWORDS_M.findIndex((capacity, index) => {
+    const version = index + 1;
+    const countBits = version < 10 ? 8 : 16;
+    return 4 + countBits + bytes.length * 8 <= capacity * 8;
+  });
   if (versionIndex < 0) throw new QrPayloadTooLongError(bytes.length);
   const version = versionIndex + 1;
 

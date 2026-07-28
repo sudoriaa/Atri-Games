@@ -134,6 +134,11 @@ describe("encodeQR", () => {
     expect(encodeQR("霓".repeat(60)).length).toBeGreaterThan(21 + 8);
   });
 
+  it("enforces the exact version 10 byte-mode boundary", () => {
+    expect(() => encodeQR("a".repeat(213))).not.toThrow();
+    expect(() => encodeQR("a".repeat(214))).toThrow(QrPayloadTooLongError);
+  });
+
   it("rejects a payload beyond the level M version 10 capacity", () => {
     expect(() => encodeQR("a".repeat(300))).toThrow(QrPayloadTooLongError);
   });
