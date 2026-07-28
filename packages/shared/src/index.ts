@@ -81,9 +81,53 @@ export interface Game {
   playCount: number;
   favoriteCount: number;
   isFavorite: boolean;
+  likeCount: number;
+  isLiked: boolean;
+  /** Root comments plus replies. */
+  commentCount: number;
+  shareCount: number;
   createdAt: string;
   updatedAt: string;
   publishedAt?: string;
+}
+
+/** One message in a game's discussion. Replies nest exactly one level deep. */
+export interface GameComment {
+  id: string;
+  gameId: string;
+  parentId?: string;
+  authorId: string;
+  authorName: string;
+  authorRole: UserRole;
+  body: string;
+  likeCount: number;
+  isLiked: boolean;
+  replyCount: number;
+  /** True when the viewer authored the message or is an administrator. */
+  canDelete: boolean;
+  createdAt: string;
+  updatedAt: string;
+  replies?: GameComment[];
+}
+
+export interface GameCommentList {
+  items: GameComment[];
+  /** Root comments only — the unit the pager walks. */
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export type GameShareChannel = "link" | "card" | "native" | "qrcode";
+
+export interface GameLikeState {
+  likeCount: number;
+  isLiked: boolean;
+}
+
+export interface GameShareState {
+  shareCount: number;
+  channel: GameShareChannel;
 }
 
 export interface GameInput {
@@ -361,6 +405,58 @@ export class ApiClient {
       `/games/${encodeURIComponent(slug)}/matchmaking/tickets/${encodeURIComponent(ticketId)}`,
       { method: "DELETE" },
       ticket,
+    );
+  }
+
+  likeGame(slug: string) {
+    return this.request<GameLikeState>(`/games/${encodeURIComponent(slug)}/likes`, { method: "POST" });
+  }
+
+  unlikeGame(slug: string) {
+    return this.request<GameLikeState>(`/games/${encodeURIComponent(slug)}/likes`, { method: "DELETE" });
+  }
+
+  /** Counts one share. Anonymous visitors are allowed to record a share. */
+  recordShare(slug: string, channel: GameShareChannel = "link") {
+    return this.request<GameShareState>(`/games/${encodeURIComponent(slug)}/shares`, {
+      method: "POST",
+      body: JSON.stringify({ channel }),
+    });
+  }
+
+  gameComments(slug: string, params: { page?: number; pageSize?: number } = {}) {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.pageSize) query.set("pageSize", String(params.pageSize));
+    const suffix = query.size ? `?${query.toString()}` : "";
+    return this.request<GameCommentList>(`/games/${encodeURIComponent(slug)}/comments${suffix}`);
+  }
+
+  addGameComment(slug: string, body: string, parentId?: string) {
+    return this.request<GameComment>(`/games/${encodeURIComponent(slug)}/comments`, {
+      method: "POST",
+      body: JSON.stringify(parentId ? { body, parentId } : { body }),
+    });
+  }
+
+  deleteGameComment(slug: string, commentId: string) {
+    return this.request<void>(
+      `/games/${encodeURIComponent(slug)}/comments/${encodeURIComponent(commentId)}`,
+      { method: "DELETE" },
+    );
+  }
+
+  likeGameComment(slug: string, commentId: string) {
+    return this.request<GameLikeState>(
+      `/games/${encodeURIComponent(slug)}/comments/${encodeURIComponent(commentId)}/likes`,
+      { method: "POST" },
+    );
+  }
+
+  unlikeGameComment(slug: string, commentId: string) {
+    return this.request<GameLikeState>(
+      `/games/${encodeURIComponent(slug)}/comments/${encodeURIComponent(commentId)}/likes`,
+      { method: "DELETE" },
     );
   }
 

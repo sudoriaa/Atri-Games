@@ -170,6 +170,35 @@ func (s *Store) MigrateAndSeed(adminEmail, adminHash string) error {
 			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
 			PRIMARY KEY(user_id, game_id)
 		)`,
+		`CREATE TABLE IF NOT EXISTS game_likes (
+			user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+			PRIMARY KEY(user_id, game_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS game_comments (
+			id TEXT PRIMARY KEY,
+			game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+			user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			parent_id TEXT REFERENCES game_comments(id) ON DELETE CASCADE,
+			body TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'visible',
+			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+			updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+		)`,
+		`CREATE TABLE IF NOT EXISTS game_comment_likes (
+			user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			comment_id TEXT NOT NULL REFERENCES game_comments(id) ON DELETE CASCADE,
+			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+			PRIMARY KEY(user_id, comment_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS game_share_events (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+			user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+			channel TEXT NOT NULL DEFAULT 'link',
+			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+		)`,
 		`CREATE TABLE IF NOT EXISTS play_events (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
@@ -193,6 +222,11 @@ func (s *Store) MigrateAndSeed(adminEmail, adminHash string) error {
 		`CREATE INDEX IF NOT EXISTS idx_matchmaking_waiting ON matchmaking_tickets(game_id,mode,region,status,created_at)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_matchmaking_user_waiting ON matchmaking_tickets(game_id,user_id) WHERE status='waiting'`,
 		`CREATE INDEX IF NOT EXISTS idx_play_events_created ON play_events(created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_game_likes_game ON game_likes(game_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_game_comments_thread ON game_comments(game_id,parent_id,created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_game_comments_user ON game_comments(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_game_comment_likes_comment ON game_comment_likes(comment_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_game_share_events_game ON game_share_events(game_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC)`,
 	}
 	for _, statement := range statements {
@@ -661,7 +695,7 @@ func (s *Store) Games(filter GameFilter) (GameList, error) {
 		return GameList{}, err
 	}
 
-	selectArgs := append([]any{filter.UserID, filter.UserID}, args...)
+	selectArgs := append([]any{filter.UserID, filter.UserID, filter.UserID, filter.UserID}, args...)
 	selectArgs = append(selectArgs, filter.PageSize, (filter.Page-1)*filter.PageSize)
 	query := gameSelect + where + ` ORDER BY g.featured DESC, g.play_count DESC, g.updated_at DESC LIMIT ? OFFSET ?`
 	rows, err := s.db.Query(query, selectArgs...)
@@ -686,12 +720,16 @@ const gameSelect = `SELECT
 	g.requires_login,g.platform_storage,g.matchmaking_enabled,
 	g.tags_json,g.play_count,(SELECT COUNT(*) FROM favorites f WHERE f.game_id=g.id),
 	CASE WHEN ?='' THEN 0 ELSE EXISTS(SELECT 1 FROM favorites uf WHERE uf.game_id=g.id AND uf.user_id=?) END,
+	(SELECT COUNT(*) FROM game_likes l WHERE l.game_id=g.id),
+	CASE WHEN ?='' THEN 0 ELSE EXISTS(SELECT 1 FROM game_likes ul WHERE ul.game_id=g.id AND ul.user_id=?) END,
+	(SELECT COUNT(*) FROM game_comments cm WHERE cm.game_id=g.id AND cm.status='visible'),
+	(SELECT COUNT(*) FROM game_share_events sh WHERE sh.game_id=g.id),
 	g.created_at,g.updated_at,COALESCE(g.published_at,'')
 	FROM games g LEFT JOIN categories c ON c.id=g.category_id`
 
 func (s *Store) gameBy(column, value, userID string, publishedOnly bool) (Game, error) {
 	query := gameSelect + " WHERE g." + column + "=?"
-	args := []any{userID, userID, value}
+	args := []any{userID, userID, userID, userID, value}
 	if publishedOnly {
 		query += " AND g.status='published'"
 	}
@@ -714,7 +752,9 @@ func scanGame(row interface{ Scan(...any) error }) (Game, error) {
 		&game.CoverURL, &game.LaunchURL, &game.LaunchOpenIn, &game.RepositoryURL, &game.Engine, &game.Version, &game.Status,
 		&game.CategoryID, &game.CategoryName, &game.Featured, &game.NetworkRequired, &game.OwnBackend,
 		&game.RequiresLogin, &game.UsesPlatformStorage, &game.MatchmakingEnabled,
-		&tags, &game.PlayCount, &game.FavoriteCount, &game.IsFavorite, &game.CreatedAt, &game.UpdatedAt, &game.PublishedAt,
+		&tags, &game.PlayCount, &game.FavoriteCount, &game.IsFavorite,
+		&game.LikeCount, &game.IsLiked, &game.CommentCount, &game.ShareCount,
+		&game.CreatedAt, &game.UpdatedAt, &game.PublishedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Game{}, ErrNotFound
@@ -876,7 +916,7 @@ func (s *Store) RemoveFavorite(userID, gameID string) error {
 
 func (s *Store) FavoriteGames(userID string) ([]Game, error) {
 	query := gameSelect + ` JOIN favorites mine ON mine.game_id=g.id AND mine.user_id=? WHERE g.status='published' ORDER BY mine.created_at DESC`
-	rows, err := s.db.Query(query, userID, userID, userID)
+	rows, err := s.db.Query(query, userID, userID, userID, userID, userID)
 	if err != nil {
 		return nil, err
 	}

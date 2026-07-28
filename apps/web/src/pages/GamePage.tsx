@@ -1,8 +1,10 @@
-import { gameRequiresLogin, type LaunchResponse } from "@atri/shared";
-import { ArrowLeft, ArrowUpRight, Cloud, Code2, ExternalLink, Heart, LogIn, Share2, ShieldCheck, WifiOff } from "lucide-react";
+import { gameRequiresLogin, type GameShareChannel, type LaunchResponse } from "@atri/shared";
+import { ArrowLeft, ArrowUpRight, Cloud, Code2, ExternalLink, Heart, LogIn, MessageSquare, Share2, ShieldCheck, Star, WifiOff } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { CommentSection } from "../components/CommentSection";
 import { ErrorState, LoadingState } from "../components/PageState";
+import { ShareDialog } from "../components/ShareDialog";
 import { useAuth } from "../lib/auth";
 import { useAsync } from "../lib/use-async";
 
@@ -31,6 +33,8 @@ export function GamePage() {
   const game = useAsync(() => api.game(slug), [api, slug]);
   const [launching, setLaunching] = useState(false);
   const [favoriteBusy, setFavoriteBusy] = useState(false);
+  const [likeBusy, setLikeBusy] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [notice, setNotice] = useState("");
 
   const launch = async () => {
@@ -88,12 +92,34 @@ export function GamePage() {
     }
   };
 
-  const share = async () => {
-    const data = { title: game.data?.title ?? "Atri Games", url: window.location.href };
+  const toggleLike = async () => {
+    if (!user) {
+      navigate(`/auth?next=${encodeURIComponent(`/games/${slug}`)}`);
+      return;
+    }
+    if (!game.data) return;
+    setLikeBusy(true);
+    setNotice("");
     try {
-      if (navigator.share) await navigator.share(data);
-      else { await navigator.clipboard.writeText(data.url); setNotice("详情链接已复制"); }
-    } catch { /* user cancelled */ }
+      const state = game.data.isLiked ? await api.unlikeGame(slug) : await api.likeGame(slug);
+      game.setData({ ...game.data, isLiked: state.isLiked, likeCount: state.likeCount });
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "操作失败");
+    } finally {
+      setLikeBusy(false);
+    }
+  };
+
+  // The dialog reports which surface the player used; the counter is settled
+  // from the server's response so concurrent shares stay accurate.
+  const recordShare = async (channel: GameShareChannel) => {
+    try {
+      const state = await api.recordShare(slug, channel);
+      game.setData((current) => (current ? { ...current, shareCount: state.shareCount } : current));
+    } catch {
+      // A share already happened in the player's client; a failed count is not
+      // worth interrupting them over.
+    }
   };
 
   if (game.loading) return <LoadingState />;
@@ -111,8 +137,15 @@ export function GamePage() {
           <p className="game-detail__author">A game by <strong>{game.data.authorName}</strong></p>
           <div className="game-detail__actions">
             <button className="button button--large" onClick={launch} disabled={launching}>{launching ? "正在打开…" : "开始游戏"}<ExternalLink size={18} /></button>
-            <button className={`icon-button icon-button--border ${game.data.isFavorite ? "is-favorite" : ""}`} onClick={toggleFavorite} disabled={favoriteBusy} aria-label={game.data.isFavorite ? "取消收藏" : "收藏游戏"}><Heart fill={game.data.isFavorite ? "currentColor" : "none"} /></button>
-            <button className="icon-button icon-button--border" onClick={share} aria-label="分享游戏"><Share2 /></button>
+            <button className={`icon-button icon-button--border ${game.data.isLiked ? "is-liked" : ""}`} onClick={toggleLike} disabled={likeBusy} aria-label={game.data.isLiked ? "取消点赞" : "点赞游戏"} aria-pressed={game.data.isLiked}><Star fill={game.data.isLiked ? "currentColor" : "none"} /></button>
+            <button className={`icon-button icon-button--border ${game.data.isFavorite ? "is-favorite" : ""}`} onClick={toggleFavorite} disabled={favoriteBusy} aria-label={game.data.isFavorite ? "取消收藏" : "收藏游戏"} aria-pressed={game.data.isFavorite}><Heart fill={game.data.isFavorite ? "currentColor" : "none"} /></button>
+            <button className="icon-button icon-button--border" onClick={() => setShareOpen(true)} aria-label="分享游戏"><Share2 /></button>
+          </div>
+          <div className="game-detail__stats">
+            <span><Star size={14} /> {game.data.likeCount.toLocaleString()} 点赞</span>
+            <span><Heart size={14} /> {game.data.favoriteCount.toLocaleString()} 收藏</span>
+            <span><Share2 size={14} /> {game.data.shareCount.toLocaleString()} 分享</span>
+            <span><MessageSquare size={14} /> {game.data.commentCount.toLocaleString()} 留言</span>
           </div>
           {notice && <p className="inline-notice">{notice}</p>}
           <div className="launch-note"><ArrowUpRight size={18} /><p><strong>{gameRequiresLogin(game.data) ? "需要玩家账号" : "这是一个独立网页游戏"}</strong><br />{gameRequiresLogin(game.data) ? "注册或登录后，平台会为本次游戏发放短期玩家票据。" : "点击后将离开 Atri Games，进入创作者自己的游戏页面。"}</p></div>
@@ -132,6 +165,22 @@ export function GamePage() {
           {game.data.repositoryUrl && <a href={game.data.repositoryUrl} target="_blank" rel="noreferrer">查看源代码 <ArrowUpRight size={15} /></a>}
         </aside>
       </section>
+      <CommentSection
+        slug={slug}
+        onCountChange={(delta) =>
+          game.setData((current) =>
+            current ? { ...current, commentCount: Math.max(0, current.commentCount + delta) } : current,
+          )
+        }
+      />
+      {shareOpen && (
+        <ShareDialog
+          game={game.data}
+          shareUrl={`${window.location.origin}/games/${game.data.slug}`}
+          onClose={() => setShareOpen(false)}
+          onShared={recordShare}
+        />
+      )}
     </div>
   );
 }

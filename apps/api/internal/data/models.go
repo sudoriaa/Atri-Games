@@ -47,9 +47,41 @@ type Game struct {
 	PlayCount           int64    `json:"playCount"`
 	FavoriteCount       int64    `json:"favoriteCount"`
 	IsFavorite          bool     `json:"isFavorite"`
+	LikeCount           int64    `json:"likeCount"`
+	IsLiked             bool     `json:"isLiked"`
+	CommentCount        int64    `json:"commentCount"`
+	ShareCount          int64    `json:"shareCount"`
 	CreatedAt           string   `json:"createdAt"`
 	UpdatedAt           string   `json:"updatedAt"`
 	PublishedAt         string   `json:"publishedAt,omitempty"`
+}
+
+// GameComment is one visible message in a game's discussion thread. Replies
+// carry ParentID and are returned nested under their root comment.
+type GameComment struct {
+	ID          string        `json:"id"`
+	GameID      string        `json:"gameId"`
+	ParentID    string        `json:"parentId,omitempty"`
+	AuthorID    string        `json:"authorId"`
+	AuthorName  string        `json:"authorName"`
+	AuthorRole  string        `json:"authorRole"`
+	Body        string        `json:"body"`
+	LikeCount   int64         `json:"likeCount"`
+	IsLiked     bool          `json:"isLiked"`
+	ReplyCount  int64         `json:"replyCount"`
+	CanDelete   bool          `json:"canDelete"`
+	CreatedAt   string        `json:"createdAt"`
+	UpdatedAt   string        `json:"updatedAt"`
+	Replies     []GameComment `json:"replies,omitempty"`
+}
+
+// GameCommentList is a page of root comments. Total counts root comments only,
+// which is what the pager walks; CommentCount on Game counts replies too.
+type GameCommentList struct {
+	Items    []GameComment `json:"items"`
+	Total    int           `json:"total"`
+	Page     int           `json:"page"`
+	PageSize int           `json:"pageSize"`
 }
 
 type GameInput struct {

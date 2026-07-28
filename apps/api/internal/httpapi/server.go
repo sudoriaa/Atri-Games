@@ -94,6 +94,14 @@ func NewWithObjectStore(cfg config.Config, store *data.Store, tokens *security.T
 	mux.Handle("POST /api/v1/games/{slug}/matchmaking/tickets", server.requireGameTicket(server.limitGameRequests(server.gameWriteLimiter, http.HandlerFunc(server.createMatchTicket))))
 	mux.Handle("GET /api/v1/games/{slug}/matchmaking/tickets/{ticketId}", server.requireGameTicket(server.limitGameRequests(server.gameReadLimiter, http.HandlerFunc(server.getMatchTicket))))
 	mux.Handle("DELETE /api/v1/games/{slug}/matchmaking/tickets/{ticketId}", server.requireGameTicket(server.limitGameRequests(server.gameWriteLimiter, http.HandlerFunc(server.cancelMatchTicket))))
+	mux.Handle("POST /api/v1/games/{slug}/likes", server.requireUser(server.limitGameRequests(server.gameWriteLimiter, http.HandlerFunc(server.likeGame))))
+	mux.Handle("DELETE /api/v1/games/{slug}/likes", server.requireUser(server.limitGameRequests(server.gameWriteLimiter, http.HandlerFunc(server.unlikeGame))))
+	mux.Handle("POST /api/v1/games/{slug}/shares", server.optionalUser(server.limitGameRequests(server.gameWriteLimiter, http.HandlerFunc(server.recordShare))))
+	mux.Handle("GET /api/v1/games/{slug}/comments", server.optionalUser(http.HandlerFunc(server.gameComments)))
+	mux.Handle("POST /api/v1/games/{slug}/comments", server.requireUser(server.limitGameRequests(server.gameWriteLimiter, http.HandlerFunc(server.createGameComment))))
+	mux.Handle("DELETE /api/v1/games/{slug}/comments/{commentId}", server.requireUser(server.limitGameRequests(server.gameWriteLimiter, http.HandlerFunc(server.deleteGameComment))))
+	mux.Handle("POST /api/v1/games/{slug}/comments/{commentId}/likes", server.requireUser(server.limitGameRequests(server.gameWriteLimiter, http.HandlerFunc(server.likeGameComment))))
+	mux.Handle("DELETE /api/v1/games/{slug}/comments/{commentId}/likes", server.requireUser(server.limitGameRequests(server.gameWriteLimiter, http.HandlerFunc(server.unlikeGameComment))))
 	mux.Handle("GET /api/v1/me/favorites", server.requireUser(http.HandlerFunc(server.favorites)))
 	mux.Handle("POST /api/v1/me/favorites/{gameId}", server.requireUser(http.HandlerFunc(server.addFavorite)))
 	mux.Handle("DELETE /api/v1/me/favorites/{gameId}", server.requireUser(http.HandlerFunc(server.removeFavorite)))
@@ -1242,6 +1250,12 @@ func (s *Server) writeStoreError(w http.ResponseWriter, r *http.Request, err err
 		writeError(w, http.StatusConflict, "match_ticket_not_active", "匹配票据已经结束或取消")
 	case errors.Is(err, data.ErrInvalidGameData):
 		writeError(w, http.StatusUnprocessableEntity, "invalid_game_data", "游戏数据格式或大小无效")
+	case errors.Is(err, data.ErrInvalidComment):
+		writeError(w, http.StatusUnprocessableEntity, "invalid_comment", "留言内容不能为空，且不超过 1000 字")
+	case errors.Is(err, data.ErrCommentTooDeep):
+		writeError(w, http.StatusUnprocessableEntity, "comment_too_deep", "只支持对主留言回复一层")
+	case errors.Is(err, data.ErrCommentForbidden):
+		writeError(w, http.StatusForbidden, "comment_forbidden", "只能删除自己的留言")
 	case errors.Is(err, data.ErrInvalidMatchmaking):
 		writeError(w, http.StatusUnprocessableEntity, "invalid_matchmaking", "匹配参数格式无效")
 	case strings.Contains(strings.ToLower(err.Error()), "unique"):
