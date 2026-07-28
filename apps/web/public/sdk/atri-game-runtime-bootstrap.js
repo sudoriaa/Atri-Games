@@ -9,6 +9,54 @@
   var HANDOFF_VERSION = 1;
   var LEGACY_KEYS = ["atri_ticket", "atri_game", "atri_api"];
 
+  function memoryStorage() {
+    var values = Object.create(null);
+    return {
+      get length() {
+        return Object.keys(values).length;
+      },
+      key: function (index) {
+        var key = Object.keys(values)[index];
+        return key === undefined ? null : key;
+      },
+      getItem: function (key) {
+        key = String(key);
+        return Object.prototype.hasOwnProperty.call(values, key) ? values[key] : null;
+      },
+      setItem: function (key, value) {
+        values[String(key)] = String(value);
+      },
+      removeItem: function (key) {
+        delete values[String(key)];
+      },
+      clear: function () {
+        values = Object.create(null);
+      },
+    };
+  }
+
+  // A game served with CSP sandbox and no allow-same-origin receives an opaque
+  // origin. Browsers intentionally throw SecurityError from the Storage
+  // getters in that context. Install separate in-memory implementations before
+  // the package's first script runs so ordinary games degrade to session-only
+  // persistence instead of crashing during application bootstrap.
+  ["localStorage", "sessionStorage"].forEach(function (name) {
+    try {
+      window[name].length;
+    } catch (_error) {
+      try {
+        Object.defineProperty(window, name, {
+          configurable: true,
+          value: memoryStorage(),
+        });
+      } catch (_defineError) {
+        // Some engines expose a non-configurable Window property. Games that
+        // access it will still receive the browser's original SecurityError,
+        // but the runtime handoff below must continue.
+      }
+    }
+  });
+
   function isRecord(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
   }

@@ -1,20 +1,36 @@
 import { describe, expect, it } from "vitest";
 import runtimeBootstrap from "../../public/sdk/atri-game-runtime-bootstrap.js?raw";
 
+type MemoryStorage = {
+  readonly length: number;
+  key: (index: number) => string | null;
+  getItem: (key: string) => string | null;
+  setItem: (key: string, value: string) => void;
+  removeItem: (key: string) => void;
+  clear: () => void;
+};
+
 type BootstrapWindow = {
   name: string;
   location: { hash: string; pathname: string; search: string };
   history: { state: unknown; replaceState: (...args: unknown[]) => void };
+  localStorage?: MemoryStorage;
+  sessionStorage?: MemoryStorage;
   __ATRI_GAME_CONTEXT__?: Record<string, unknown>;
 };
 
-function runBootstrap(input: { name?: string; hash?: string; context?: Record<string, unknown> }) {
+function runBootstrap(input: {
+  name?: string;
+  hash?: string;
+  context?: Record<string, unknown>;
+  denyStorage?: boolean;
+}) {
   const replacements: unknown[][] = [];
   const window: BootstrapWindow = {
     name: input.name ?? "",
     location: {
       hash: input.hash ?? "",
-      pathname: "/playables/find-mzk/index.html",
+      pathname: "/games/find-mzk/play/",
       search: "",
     },
     history: {
@@ -23,6 +39,16 @@ function runBootstrap(input: { name?: string; hash?: string; context?: Record<st
     },
     ...(input.context ? { __ATRI_GAME_CONTEXT__: input.context } : {}),
   };
+  if (input.denyStorage) {
+    for (const name of ["localStorage", "sessionStorage"] as const) {
+      Object.defineProperty(window, name, {
+        configurable: true,
+        get: () => {
+          throw new DOMException("Storage is disabled for sandboxed documents", "SecurityError");
+        },
+      });
+    }
+  }
   new Function("window", runtimeBootstrap)(window);
   return { window, replacements };
 }
@@ -50,7 +76,7 @@ describe("Atri runtime bootstrap", () => {
       apiBaseUrl: "/api/v1",
     });
     expect(replacements).toHaveLength(1);
-    expect(replacements[0]?.[2]).toBe("/playables/find-mzk/index.html#/level/2?difficulty=hard");
+    expect(replacements[0]?.[2]).toBe("/games/find-mzk/play/#/level/2?difficulty=hard");
   });
 
   it("repairs the legacy #/atri_ticket form without consuming an unrelated window.name", () => {
@@ -65,6 +91,27 @@ describe("Atri runtime bootstrap", () => {
       gameSlug: "find-mzk",
       apiBaseUrl: "/api/v1",
     });
-    expect(replacements[0]?.[2]).toBe("/playables/find-mzk/index.html#/");
+    expect(replacements[0]?.[2]).toBe("/games/find-mzk/play/#/");
+  });
+
+  it("installs independent in-memory Storage shims for an opaque sandbox origin", () => {
+    const { window } = runBootstrap({ denyStorage: true });
+    const local = window.localStorage;
+    const session = window.sessionStorage;
+    expect(local).toBeDefined();
+    expect(session).toBeDefined();
+    expect(local).not.toBe(session);
+
+    local?.setItem("progress", "3");
+    session?.setItem("progress", "session");
+    expect(local?.getItem("progress")).toBe("3");
+    expect(session?.getItem("progress")).toBe("session");
+    expect(local?.length).toBe(1);
+    expect(local?.key(0)).toBe("progress");
+
+    local?.removeItem("progress");
+    expect(local?.getItem("progress")).toBeNull();
+    session?.clear();
+    expect(session?.length).toBe(0);
   });
 });
