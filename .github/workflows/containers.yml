@@ -46,12 +46,9 @@ jobs:
     timeout-minutes: 25
     env:
       ATRI_SITE_ADDRESS: "http://:8080"
-      ATRI_GAME_SITE_ADDRESS: "http://:8081"
-      ATRI_GAME_PUBLIC_ORIGIN: "http://127.0.0.1:18081"
       ATRI_HTTP_PORT: "18080"
-      ATRI_GAME_HTTP_PORT: "18081"
       ATRI_HTTPS_PORT: "18443"
-      ATRI_CORS_ORIGINS: "http://127.0.0.1:18080"
+      ATRI_CORS_ORIGINS: "null"
       ATRI_JWT_SECRET: "ci-only-jwt-secret-with-at-least-32-characters"
       ATRI_ADMIN_EMAIL: "admin@atri.invalid"
       ATRI_ADMIN_PASSWORD: "ci-only-admin-password"

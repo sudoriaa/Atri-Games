@@ -12,7 +12,6 @@ import (
 	"net/mail"
 	"net/url"
 	"os"
-	pathpkg "path"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -742,7 +741,12 @@ func (s *Server) importGame(w http.ResponseWriter, r *http.Request) {
 	coverURL := "/covers/" + manifest.ID + "/cover" + coverExtension
 	launchURL := manifest.Runtime.URL
 	if manifest.Runtime.Kind == "static" {
-		launchURL = "/" + pathpkg.Join("playables", manifest.ID, manifest.Runtime.Entry)
+		entry := manifest.Runtime.Entry
+		if entry == "index.html" || entry == "" {
+			launchURL = "/games/" + manifest.ID + "/play"
+		} else {
+			launchURL = "/games/" + manifest.ID + "/play/" + entry
+		}
 	}
 	hints := manifest.CapabilityHints()
 	input := data.GameInput{

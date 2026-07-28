@@ -195,7 +195,7 @@ export class AtriGame {
     const value = this.context.gameSlug ?? this.context.slug ?? this.context.gameId;
     if (typeof value === "string" && value) return value;
     try {
-      const match = globalThis.location?.pathname?.match(/\/playables\/([^/]+)/);
+      const match = globalThis.location?.pathname?.match(/\/playables\/([^/]+)|\/games\/([^/]+)\/play/);
       return match ? decodeURIComponent(match[1]) : undefined;
     } catch {
       return undefined;

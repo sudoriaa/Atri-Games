@@ -355,7 +355,7 @@ cover.webp
 检查构建工具的 base/public path。静态包部署路径是：
 
 ```text
-/playables/<game-id>/
+/games/<game-id>/play
 ```
 
 优先使用相对路径 `./assets/...`。不要把资源写成门户根路径 `/assets/...`。

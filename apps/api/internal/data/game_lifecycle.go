@@ -390,6 +390,16 @@ func managedAssetFromURL(rawURL string, cover bool) (managedAsset, bool) {
 		return managedAsset{relative: pathpkg.Join(segments...), directory: false}, true
 	}
 
+	// /games/<slug>/play[/<entry>]  →  playables/<slug>
+	if len(segments) >= 3 && segments[0] == "games" && safeBundleName(segments[1]) && segments[2] == "play" {
+		for _, segment := range segments[3:] {
+			if !safePathSegment(segment) {
+				return managedAsset{}, false
+			}
+		}
+		return managedAsset{relative: pathpkg.Join("playables", segments[1]), directory: true}, true
+	}
+
 	if len(segments) < 2 || (segments[0] != "demos" && segments[0] != "playables") || !safeBundleName(segments[1]) {
 		return managedAsset{}, false
 	}

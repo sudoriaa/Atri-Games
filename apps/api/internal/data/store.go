@@ -215,6 +215,9 @@ func (s *Store) MigrateAndSeed(adminEmail, adminHash string) error {
 	if err := migrateSeedLaunchURLs(tx); err != nil {
 		return err
 	}
+	if err := migratePlayableURLsToGamePath(tx); err != nil {
+		return err
+	}
 	if err := backfillGameAssets(tx); err != nil {
 		return err
 	}
@@ -419,6 +422,55 @@ func migrateSeedLaunchURLs(tx *sql.Tx) error {
 			`UPDATE games SET launch_url=?,updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now')
 			 WHERE id=? AND slug=? AND launch_url=?`,
 			newURL, game.id, game.slug, oldURL,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// migratePlayableURLsToGamePath rewrites static-package launch_urls from the
+// legacy /playables/<slug>/[entry] form to the unified /games/<slug>/play[/entry]
+// path served by the main Caddy site. The migration is idempotent: rows that
+// already carry the new form are left unchanged.
+func migratePlayableURLsToGamePath(tx *sql.Tx) error {
+	rows, err := tx.Query(`SELECT id, slug, launch_url FROM games WHERE launch_url LIKE '/playables/%'`)
+	if err != nil {
+		return err
+	}
+	type row struct{ id, slug, launchURL string }
+	var updates []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.id, &r.slug, &r.launchURL); err != nil {
+			rows.Close()
+			return err
+		}
+		updates = append(updates, r)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, r := range updates {
+		prefix := "/playables/" + r.slug + "/"
+		var newURL string
+		if r.launchURL == "/playables/"+r.slug+"/index.html" || r.launchURL == "/playables/"+r.slug+"/" {
+			newURL = "/games/" + r.slug + "/play"
+		} else if strings.HasPrefix(r.launchURL, prefix) {
+			entry := strings.TrimPrefix(r.launchURL, prefix)
+			if entry == "index.html" {
+				newURL = "/games/" + r.slug + "/play"
+			} else {
+				newURL = "/games/" + r.slug + "/play/" + entry
+			}
+		} else {
+			// unexpected form — skip safely
+			continue
+		}
+		if _, err := tx.Exec(
+			`UPDATE games SET launch_url=?,updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id=?`,
+			newURL, r.id,
 		); err != nil {
 			return err
 		}

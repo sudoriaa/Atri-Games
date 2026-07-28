@@ -20,6 +20,10 @@ export function App() {
           <Route index element={<HomePage />} />
           <Route path="discover" element={<DiscoverPage />} />
           <Route path="games/:slug" element={<GamePage />} />
+          {/* /games/:slug/play is served as a static file by Caddy; this
+              stub prevents React Router from catching the path on client-side
+              navigations and rendering a 404 before Caddy can handle it. */}
+          <Route path="games/:slug/play/*" element={null} />
           <Route path="library" element={<LibraryPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="developers" element={<DeveloperPromptPage />} />
