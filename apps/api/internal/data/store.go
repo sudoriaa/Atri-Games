@@ -252,6 +252,9 @@ func (s *Store) MigrateAndSeed(adminEmail, adminHash string) error {
 	if err := migratePlayableURLsToGamePath(tx); err != nil {
 		return err
 	}
+	if err := normalizeGamePlayURLs(tx); err != nil {
+		return err
+	}
 	if err := backfillGameAssets(tx); err != nil {
 		return err
 	}
@@ -511,6 +514,14 @@ func migratePlayableURLsToGamePath(tx *sql.Tx) error {
 		}
 	}
 	return nil
+}
+
+func normalizeGamePlayURLs(tx *sql.Tx) error {
+	_, err := tx.Exec(`UPDATE games
+		SET launch_url='/games/' || slug || '/play/',
+			updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now')
+		WHERE launch_url='/games/' || slug || '/play'`)
+	return err
 }
 
 func newID(prefix string) string {

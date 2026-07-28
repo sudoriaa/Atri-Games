@@ -512,6 +512,21 @@ func TestManagedAssetFromURLAcceptsGamePlayRootAndRejectsUnexpectedPaths(t *test
 	}
 }
 
+func TestNormalizeGamePlayURLsAddsCanonicalTrailingSlash(t *testing.T) {
+	store := newTestStore(t)
+	game := createLifecycleGame(t, store, "canonical-play", "/covers/canonical-play.png", "/games/canonical-play/play")
+	if err := store.MigrateAndSeed("admin@example.test", "hash"); err != nil {
+		t.Fatalf("MigrateAndSeed: %v", err)
+	}
+	var launchURL string
+	if err := store.db.QueryRow(`SELECT launch_url FROM games WHERE id=?`, game.ID).Scan(&launchURL); err != nil {
+		t.Fatalf("read launch URL: %v", err)
+	}
+	if launchURL != "/games/canonical-play/play/" {
+		t.Fatalf("normalized launch URL = %q, want canonical trailing slash", launchURL)
+	}
+}
+
 func TestMigrateAndSeedMovesLegacySeedLaunchURLsToOwnedWrappers(t *testing.T) {
 	store := newTestStore(t)
 	const (
