@@ -64,6 +64,7 @@ export function SiteLayout() {
           <Link to="/developers">AI 接入提示词</Link>
           <a href="https://github.com/sudoriaa/Atri-Games/blob/main/docs/GAME_INTEGRATION.md" rel="noreferrer" target="_blank">完整文档</a>
           <a href="mailto:hello@atri.games">联系我们</a>
+          <a href="https://github.com/sudoriaa/Atri-Games" rel="noreferrer" target="_blank" title="GitHub 开源仓库"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .7a11.3 11.3 0 0 0-3.6 22c.6.1.8-.2.8-.5v-2.2c-3.3.7-4-1.4-4-1.4-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-6a4.7 4.7 0 0 1 1.2-3.2c-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.4 11.4 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.1a4.7 4.7 0 0 1 1.2 3.2c0 4.7-2.9 5.7-5.6 6 .4.3.8 1 .8 2v3c0 .3.2.6.8.5A11.3 11.3 0 0 0 12 .7Z" /></svg> 开源仓库</a>
         </div>
         <small>© 2026 Atri Games · Built with curiosity.</small>
       </footer>

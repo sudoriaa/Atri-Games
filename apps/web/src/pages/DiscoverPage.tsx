@@ -14,7 +14,7 @@ export function DiscoverPage() {
   const category = params.get("category") ?? "";
   const featured = params.get("featured") ?? "";
   const page = Number(params.get("page") ?? 1);
-  const request = useMemo(() => ({ query, category, featured: featured || undefined, page, pageSize: 12 }), [category, featured, page, query]);
+  const request = useMemo(() => ({ query, category, featured: featured || undefined, sort: "likes", page, pageSize: 12 }), [category, featured, page, query]);
   const games = useAsync(() => api.games(request), [api, request]);
   const categories = useAsync(() => api.categories(), [api]);
 

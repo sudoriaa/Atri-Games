@@ -709,7 +709,11 @@ func (s *Store) Games(filter GameFilter) (GameList, error) {
 
 	selectArgs := append([]any{filter.UserID, filter.UserID, filter.UserID, filter.UserID}, args...)
 	selectArgs = append(selectArgs, filter.PageSize, (filter.Page-1)*filter.PageSize)
-	query := gameSelect + where + ` ORDER BY g.featured DESC, g.play_count DESC, g.updated_at DESC LIMIT ? OFFSET ?`
+	orderBy := `g.featured DESC, g.play_count DESC, g.updated_at DESC`
+	if filter.Sort == "likes" {
+		orderBy = `(SELECT COUNT(*) FROM game_likes l WHERE l.game_id=g.id) DESC, ` + orderBy
+	}
+	query := gameSelect + where + ` ORDER BY ` + orderBy + ` LIMIT ? OFFSET ?`
 	rows, err := s.db.Query(query, selectArgs...)
 	if err != nil {
 		return GameList{}, err

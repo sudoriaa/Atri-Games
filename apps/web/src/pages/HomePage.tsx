@@ -21,7 +21,7 @@ export function HomePage() {
           <p className="hero__lead">来自独立创作者的网页游戏展馆。无需安装，打开浏览器，下一秒就进入另一个世界。</p>
           <div className="hero__actions">
             <Link className="button" to="/discover">开始探索 <ArrowRight size={17} /></Link>
-            <a className="text-link" href="https://github.com/sudoriaa/Atri-Games" target="_blank" rel="noreferrer">我是开发者 <span>↗</span></a>
+            <Link className="text-link" to="/developers">我是开发者 <ArrowRight size={15} /></Link>
           </div>
           <div className="hero__stats">
             <div><strong>06</strong><span>首发作品</span></div>

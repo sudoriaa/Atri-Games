@@ -147,6 +147,34 @@ func TestGameCountersSurfaceOnGameReads(t *testing.T) {
 	}
 }
 
+func TestGamesSortByLikes(t *testing.T) {
+	store := newTestStore(t)
+	users := make([]User, 0, 3)
+	for _, email := range []string{"rank-a@example.test", "rank-b@example.test", "rank-c@example.test"} {
+		user, err := store.CreateUser(email, "hash", "Ranked Player")
+		if err != nil {
+			t.Fatalf("CreateUser(%s): %v", email, err)
+		}
+		users = append(users, user)
+	}
+	for _, user := range users {
+		if err := store.LikeGame(user.ID, "game_orbit"); err != nil {
+			t.Fatalf("LikeGame(%s): %v", user.ID, err)
+		}
+	}
+	if err := store.LikeGame(users[0].ID, "game_neon"); err != nil {
+		t.Fatalf("LikeGame: %v", err)
+	}
+
+	list, err := store.Games(GameFilter{Sort: "likes", Page: 1, PageSize: 24})
+	if err != nil {
+		t.Fatalf("Games: %v", err)
+	}
+	if len(list.Items) < 2 || list.Items[0].ID != "game_orbit" || list.Items[1].ID != "game_neon" {
+		t.Fatalf("unexpected like ordering: %+v", list.Items)
+	}
+}
+
 func TestCommentThreadingRulesAndPermissions(t *testing.T) {
 	store, gameID, alice, bob := socialFixture(t)
 

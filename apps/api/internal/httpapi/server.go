@@ -980,7 +980,7 @@ func parseGameFilter(r *http.Request, admin bool) data.GameFilter {
 	page, _ := strconv.Atoi(query.Get("page"))
 	pageSize, _ := strconv.Atoi(query.Get("pageSize"))
 	filter := data.GameFilter{
-		Query: strings.TrimSpace(query.Get("query")), CategoryID: query.Get("category"), Status: query.Get("status"),
+		Query: strings.TrimSpace(query.Get("query")), CategoryID: query.Get("category"), Status: query.Get("status"), Sort: query.Get("sort"),
 		Page: page, PageSize: pageSize, Admin: admin,
 	}
 	if raw := query.Get("featured"); raw != "" {

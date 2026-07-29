@@ -22,6 +22,8 @@ Thumbs.db
 .turbo/
 .pnpm-store/
 
+
+
 # Game engine generated files and platform-hosted artifacts
 [Ll]ibrary/
 [Tt]emp/
@@ -33,3 +35,6 @@ artifacts/
 *.db
 *.db-shm
 *.db-wal
+
+# Local server access details
+/docs/server.txt
