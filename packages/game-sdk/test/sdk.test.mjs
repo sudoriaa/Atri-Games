@@ -26,6 +26,36 @@ test("SDK emits local lifecycle events without a host", () => {
   game.dispose();
 });
 
+test("SDK maps the platform menu state to pause and resume lifecycle events", () => {
+  const previousAdd = Object.getOwnPropertyDescriptor(globalThis, "addEventListener");
+  const previousRemove = Object.getOwnPropertyDescriptor(globalThis, "removeEventListener");
+  const listeners = new Map();
+  Object.defineProperty(globalThis, "addEventListener", {
+    configurable: true,
+    value: (type, listener) => listeners.set(type, listener),
+  });
+  Object.defineProperty(globalThis, "removeEventListener", {
+    configurable: true,
+    value: (type) => listeners.delete(type),
+  });
+  try {
+    const game = createAtriGame();
+    const events = [];
+    game.on("pause", () => events.push("pause"));
+    game.on("resume", () => events.push("resume"));
+    listeners.get("atri-platform-menu")?.({ detail: { open: true } });
+    listeners.get("atri-platform-menu")?.({ detail: { open: false } });
+    assert.deepEqual(events, ["pause", "resume"]);
+    game.dispose();
+    assert.equal(listeners.has("atri-platform-menu"), false);
+  } finally {
+    if (previousAdd) Object.defineProperty(globalThis, "addEventListener", previousAdd);
+    else delete globalThis.addEventListener;
+    if (previousRemove) Object.defineProperty(globalThis, "removeEventListener", previousRemove);
+    else delete globalThis.removeEventListener;
+  }
+});
+
 test("SDK exposes game-scoped storage and matchmaking helpers", async () => {
   const calls = [];
   const previousFetch = globalThis.fetch;

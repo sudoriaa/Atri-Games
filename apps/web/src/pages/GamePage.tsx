@@ -23,6 +23,8 @@ function gameHandoff(response: LaunchResponse, slug: string) {
     ticket: response.gameTicket,
     gameSlug: slug,
     apiBaseUrl: response.apiBase ?? response.apiBaseUrl ?? "/api/v1",
+    returnUrl: `/games/${encodeURIComponent(slug)}`,
+    parentOrigin: window.location.origin,
   });
 }
 

@@ -118,6 +118,7 @@ let bestCombo = 1;
 let flash = 0;
 let animationFrame = 0;
 let pointer = null;
+let platformMenuOpen = false;
 let nodes = [];
 let hazards = [];
 let particles = [];
@@ -444,6 +445,11 @@ function draw(now) {
 
 function frame(now) {
   if (!running) return;
+  if (platformMenuOpen) {
+    lastTime = now;
+    animationFrame = requestAnimationFrame(frame);
+    return;
+  }
   const delta = Math.min((now - lastTime) / 1000, .033);
   lastTime = now;
   update(delta);
@@ -465,6 +471,12 @@ window.addEventListener("keydown", (event) => {
   }
 });
 window.addEventListener("keyup", (event) => keys.delete(event.key.toLowerCase()));
+window.addEventListener("atri-platform-menu", (event) => {
+  platformMenuOpen = event.detail?.open === true;
+  keys.clear();
+  pointer = null;
+  if (!platformMenuOpen && running) lastTime = performance.now();
+});
 canvas.addEventListener("pointerdown", (event) => {
   pointer = pointerPosition(event);
   canvas.setPointerCapture(event.pointerId);

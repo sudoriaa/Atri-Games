@@ -12,12 +12,102 @@ type MemoryStorage = {
 
 type BootstrapWindow = {
   name: string;
-  location: { hash: string; pathname: string; search: string };
+  location: {
+    hash: string;
+    pathname: string;
+    search: string;
+    href?: string;
+    origin?: string;
+    assign?: (url: string) => void;
+    reload?: () => void;
+  };
   history: { state: unknown; replaceState: (...args: unknown[]) => void };
   localStorage?: MemoryStorage;
   sessionStorage?: MemoryStorage;
   __ATRI_GAME_CONTEXT__?: Record<string, unknown>;
 };
+
+type FakeListener = (event: { key?: string; shiftKey?: boolean; target?: FakeElement; preventDefault: () => void }) => void;
+
+class FakeElement {
+  readonly children: FakeElement[] = [];
+  readonly attributes = new Map<string, string>();
+  readonly listeners = new Map<string, FakeListener[]>();
+  shadowRoot?: FakeElement;
+  className = "";
+  textContent = "";
+  hidden = false;
+  id = "";
+  title = "";
+  type = "";
+
+  constructor(readonly tagName: string, private readonly document: FakeDocument) {}
+
+  appendChild(child: FakeElement) {
+    this.children.push(child);
+    return child;
+  }
+
+  attachShadow() {
+    this.shadowRoot = new FakeElement("shadow-root", this.document);
+    return this.shadowRoot;
+  }
+
+  setAttribute(name: string, value: string) {
+    this.attributes.set(name, value);
+  }
+
+  getAttribute(name: string) {
+    return this.attributes.get(name) ?? null;
+  }
+
+  addEventListener(type: string, listener: FakeListener) {
+    const listeners = this.listeners.get(type) ?? [];
+    listeners.push(listener);
+    this.listeners.set(type, listeners);
+  }
+
+  focus() {
+    this.document.activeElement = this;
+  }
+
+  click() {
+    for (const listener of this.listeners.get("click") ?? []) {
+      listener({ target: this, preventDefault: () => {} });
+    }
+  }
+}
+
+class FakeDocument {
+  readonly body = new FakeElement("body", this);
+  readonly documentElement = new FakeElement("html", this);
+  activeElement?: FakeElement;
+  fullscreenElement: FakeElement | null = null;
+
+  createElement(tagName: string) {
+    return new FakeElement(tagName, this);
+  }
+
+  querySelector(selector: string) {
+    if (selector === "[data-atri-platform-menu]") {
+      return findElement(this.body, (element) => element.attributes.has("data-atri-platform-menu")) ?? null;
+    }
+    return null;
+  }
+}
+
+function findElement(root: FakeElement, predicate: (element: FakeElement) => boolean): FakeElement | undefined {
+  if (predicate(root)) return root;
+  for (const child of root.children) {
+    const found = findElement(child, predicate);
+    if (found) return found;
+    if (child.shadowRoot) {
+      const inShadow = findElement(child.shadowRoot, predicate);
+      if (inShadow) return inShadow;
+    }
+  }
+  return undefined;
+}
 
 function runBootstrap(input: {
   name?: string;
@@ -51,6 +141,40 @@ function runBootstrap(input: {
   }
   new Function("window", runtimeBootstrap)(window);
   return { window, replacements };
+}
+
+function runBootstrapWithMenu() {
+  const replacements: unknown[][] = [];
+  const navigations: string[] = [];
+  const document = new FakeDocument();
+  const window: BootstrapWindow & {
+    document: FakeDocument;
+    addEventListener: (type: string, listener: FakeListener) => void;
+    dispatchEvent: () => void;
+    CustomEvent: new (type: string, init: { detail: unknown }) => unknown;
+  } = {
+    name: "",
+    location: {
+      hash: "",
+      pathname: "/games/find-mzk/play/",
+      search: "",
+      href: "https://atri.test/games/find-mzk/play/",
+      origin: "https://atri.test",
+      assign: (url) => navigations.push(url),
+    },
+    history: {
+      state: null,
+      replaceState: (...args) => replacements.push(args),
+    },
+    document,
+    addEventListener: () => {},
+    dispatchEvent: () => {},
+    CustomEvent: class {
+      constructor(_type: string, _init: { detail: unknown }) {}
+    },
+  };
+  new Function("window", runtimeBootstrap)(window);
+  return { document, navigations, replacements, window };
 }
 
 describe("Atri runtime bootstrap", () => {
@@ -113,5 +237,28 @@ describe("Atri runtime bootstrap", () => {
     expect(local?.getItem("progress")).toBeNull();
     session?.clear();
     expect(session?.length).toBe(0);
+  });
+
+  it("mounts one platform menu and exits back to the current game detail page", () => {
+    const { document, navigations, window } = runBootstrapWithMenu();
+    const host = findElement(document.body, (element) => element.attributes.has("data-atri-platform-menu"));
+    expect(host).toBeDefined();
+    expect(host?.shadowRoot).toBeDefined();
+    if (!host?.shadowRoot) throw new Error("platform menu shadow root was not created");
+
+    const trigger = findElement(host.shadowRoot, (element) => element.className === "atri-platform-menu__trigger");
+    const panel = findElement(host.shadowRoot, (element) => element.id === "atri-platform-menu-panel");
+    const exit = findElement(host.shadowRoot, (element) => element.getAttribute("data-atri-action") === "exit");
+    expect(trigger).toBeDefined();
+    expect(panel?.hidden).toBe(true);
+    trigger?.click();
+    expect(trigger?.getAttribute("aria-expanded")).toBe("true");
+    expect(panel?.hidden).toBe(false);
+
+    exit?.click();
+    expect(navigations).toEqual(["/games/find-mzk"]);
+
+    new Function("window", runtimeBootstrap)(window);
+    expect(document.body.children.filter((element) => element.attributes.has("data-atri-platform-menu"))).toHaveLength(1);
   });
 });

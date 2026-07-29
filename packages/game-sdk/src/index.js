@@ -173,8 +173,16 @@ export class AtriGame {
       if (typeof document !== "undefined") this._emit(document.visibilityState === "hidden" ? "pause" : "resume");
     };
     this._pagehide = () => this._emit("pause");
+    this._platformMenu = (event) => {
+      const open = event?.detail?.open;
+      if (open === true) this._emit("pause");
+      else if (open === false) this._emit("resume");
+    };
     if (typeof document !== "undefined") document.addEventListener("visibilitychange", this._visibility);
-    if (typeof globalThis.addEventListener === "function") globalThis.addEventListener("pagehide", this._pagehide);
+    if (typeof globalThis.addEventListener === "function") {
+      globalThis.addEventListener("pagehide", this._pagehide);
+      globalThis.addEventListener("atri-platform-menu", this._platformMenu);
+    }
   }
 
   get gameId() {
@@ -419,7 +427,10 @@ export class AtriGame {
     if (this.disposed) return;
     this.disposed = true;
     if (typeof document !== "undefined") document.removeEventListener("visibilitychange", this._visibility);
-    if (typeof globalThis.removeEventListener === "function") globalThis.removeEventListener("pagehide", this._pagehide);
+    if (typeof globalThis.removeEventListener === "function") {
+      globalThis.removeEventListener("pagehide", this._pagehide);
+      globalThis.removeEventListener("atri-platform-menu", this._platformMenu);
+    }
     if (this._refreshTimer !== null) globalThis.clearTimeout?.(this._refreshTimer);
     this._refreshTimer = null;
     this.listeners.clear();
