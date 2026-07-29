@@ -581,7 +581,7 @@ func (s *Store) seed(tx *sql.Tx, adminEmail, adminHash string, initializeGames b
 	}
 
 	adminID := "usr_admin"
-	if _, err := tx.Exec(`INSERT OR IGNORE INTO users(id,user_number,email,password_hash,display_name,role,status) VALUES(?,?,?,?,?,?,?)`, adminID, 1, adminEmail, adminHash, "Atri 管理员", "admin", "active"); err != nil {
+	if _, err := tx.Exec(`INSERT OR IGNORE INTO users(id,user_number,email,password_hash,display_name,role,status,created_at) VALUES(?,?,?,?,?,?,?,strftime('%Y-%m-%dT%H:%M:%SZ','now'))`, adminID, 1, adminEmail, adminHash, "Atri 管理员", "admin", "active"); err != nil {
 		return err
 	}
 

@@ -9,7 +9,6 @@ import (
 	"mime"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/sudoriaa/atri-games/apps/api/internal/data"
 )
