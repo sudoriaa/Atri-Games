@@ -737,7 +737,7 @@ func (s *Store) CreateUser(email, passwordHash, displayName string) (User, error
 	} else if count != 1 {
 		return User{}, errors.New("user number sequence changed concurrently")
 	}
-	if _, err := tx.Exec(`INSERT INTO users(id,user_number,email,password_hash,display_name,role,status) VALUES(?,?,?,?,?,?,?)`, user.ID, user.UserNumber, user.Email, passwordHash, user.DisplayName, user.Role, user.Status); err != nil {
+	if _, err := tx.Exec(`INSERT INTO users(id,user_number,email,password_hash,display_name,role,status,created_at) VALUES(?,?,?,?,?,?,?,strftime('%Y-%m-%dT%H:%M:%SZ','now'))`, user.ID, user.UserNumber, user.Email, passwordHash, user.DisplayName, user.Role, user.Status); err != nil {
 		return User{}, err
 	}
 	if err := tx.Commit(); err != nil {
