@@ -353,10 +353,10 @@ func backfillUserNumbers(tx *sql.Tx) error {
 	}
 
 	var (
-		adminFound  bool
+		adminFound   bool
 		needsRebuild bool
-		maxNumber   int64
-		seen        = map[int64]struct{}{}
+		maxNumber    int64
+		seen         = map[int64]struct{}{}
 	)
 	for _, item := range items {
 		if item.id == "usr_admin" {
