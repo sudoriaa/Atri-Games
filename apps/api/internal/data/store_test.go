@@ -31,6 +31,13 @@ func TestStoreCoreLifecycle(t *testing.T) {
 	if err := store.MigrateAndSeed("admin@example.test", "replacement-hash"); err != nil {
 		t.Fatalf("idempotent MigrateAndSeed: %v", err)
 	}
+	admin, err := store.UserByID("usr_admin")
+	if err != nil {
+		t.Fatalf("UserByID admin: %v", err)
+	}
+	if admin.UserNumber != 1 || admin.AvatarURL != "" {
+		t.Fatalf("seed admin profile = %+v, want public user #1 without avatar", admin)
+	}
 	publicGames, err := store.Games(GameFilter{})
 	if err != nil {
 		t.Fatalf("Games: %v", err)
@@ -56,7 +63,7 @@ func TestStoreCoreLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
-	if player.Email != "player@example.test" || player.CreatedAt == "" {
+	if player.Email != "player@example.test" || player.CreatedAt == "" || player.UserNumber != 2 {
 		t.Fatalf("unexpected player: %+v", player)
 	}
 	if _, err := store.CreateUser("player@example.test", "duplicate-hash", "Duplicate"); err == nil {
@@ -66,11 +73,11 @@ func TestStoreCoreLifecycle(t *testing.T) {
 	if err != nil || found.ID != player.ID {
 		t.Fatalf("case-insensitive UserByEmail = %+v, %v", found, err)
 	}
-	updatedPlayer, err := store.UpdateProfile(player.ID, "Updated Player")
-	if err != nil || updatedPlayer.DisplayName != "Updated Player" {
+	updatedPlayer, err := store.UpdateProfile(player.ID, "Updated Player", "https://images.example.test/player.webp")
+	if err != nil || updatedPlayer.DisplayName != "Updated Player" || updatedPlayer.AvatarURL != "https://images.example.test/player.webp" {
 		t.Fatalf("UpdateProfile = %+v, %v", updatedPlayer, err)
 	}
-	if _, err := store.UpdateProfile("missing-user", "Missing"); !errors.Is(err, ErrNotFound) {
+	if _, err := store.UpdateProfile("missing-user", "Missing", ""); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("UpdateProfile missing error = %v, want ErrNotFound", err)
 	}
 	users, err := store.ListUsers()
@@ -78,10 +85,6 @@ func TestStoreCoreLifecycle(t *testing.T) {
 		t.Fatalf("ListUsers = %d users, %v", len(users), err)
 	}
 
-	admin, err := store.UserByID("usr_admin")
-	if err != nil {
-		t.Fatalf("UserByID admin: %v", err)
-	}
 	if _, err := store.UpdateUserAccess(admin.ID, admin.ID, "user", "active"); !errors.Is(err, ErrLastAdmin) {
 		t.Fatalf("UpdateUserAccess last admin error = %v, want ErrLastAdmin", err)
 	}
@@ -292,6 +295,76 @@ func TestMigrateAddsLaunchOpenInToExistingGamesTable(t *testing.T) {
 		if !exists {
 			t.Fatalf("legacy database was not migrated with %s", table)
 		}
+	}
+}
+
+func TestMigrateBackfillsUserNumbersAndPreservesSequence(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "legacy-users.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if _, err := store.db.Exec(`CREATE TABLE users (
+		id TEXT PRIMARY KEY,
+		email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+		password_hash TEXT NOT NULL,
+		display_name TEXT NOT NULL,
+		role TEXT NOT NULL DEFAULT 'user',
+		status TEXT NOT NULL DEFAULT 'active',
+		created_at TEXT NOT NULL
+	)`); err != nil {
+		t.Fatalf("create legacy users table: %v", err)
+	}
+	for _, row := range []struct {
+		id, email, name, createdAt string
+	}{
+		{"usr_existing_early", "early@example.test", "Early", "2024-01-01T00:00:00Z"},
+		{"usr_existing_later", "later@example.test", "Later", "2024-01-02T00:00:00Z"},
+	} {
+		if _, err := store.db.Exec(`INSERT INTO users(id,email,password_hash,display_name,role,status,created_at) VALUES(?,?,?,?,?,?,?)`, row.id, row.email, "hash", row.name, "user", "active", row.createdAt); err != nil {
+			t.Fatalf("insert legacy user %s: %v", row.id, err)
+		}
+	}
+
+	if err := store.MigrateAndSeed("admin@example.test", "admin-password-hash"); err != nil {
+		t.Fatalf("MigrateAndSeed legacy users: %v", err)
+	}
+	for _, want := range []struct {
+		id     string
+		number int64
+	}{
+		{"usr_admin", 1},
+		{"usr_existing_early", 2},
+		{"usr_existing_later", 3},
+	} {
+		user, err := store.UserByID(want.id)
+		if err != nil {
+			t.Fatalf("UserByID(%s): %v", want.id, err)
+		}
+		if user.UserNumber != want.number || user.AvatarURL != "" {
+			t.Fatalf("migrated user %s = %+v, want number %d and empty avatar", want.id, user, want.number)
+		}
+	}
+
+	created, err := store.CreateUser("next@example.test", "hash", "Next")
+	if err != nil {
+		t.Fatalf("CreateUser after migration: %v", err)
+	}
+	if created.UserNumber != 4 {
+		t.Fatalf("first post-migration user number = %d, want 4", created.UserNumber)
+	}
+	if _, err := store.db.Exec(`DELETE FROM users WHERE id=?`, created.ID); err != nil {
+		t.Fatalf("delete highest user for sequence test: %v", err)
+	}
+	if err := store.MigrateAndSeed("admin@example.test", "admin-password-hash"); err != nil {
+		t.Fatalf("repeat migration: %v", err)
+	}
+	afterDelete, err := store.CreateUser("after-delete@example.test", "hash", "After Delete")
+	if err != nil {
+		t.Fatalf("CreateUser after deletion: %v", err)
+	}
+	if afterDelete.UserNumber != 5 {
+		t.Fatalf("user number after highest deletion = %d, want 5", afterDelete.UserNumber)
 	}
 }
 

@@ -18,6 +18,7 @@ type Config struct {
 	Address                     string
 	DatabasePath                string
 	AssetRoot                   string
+	AvatarMaxBytes              int64
 	GameCoverMaxBytes           int64
 	GamePackageMaxBytes         int64
 	GamePackageMaxUnpackedBytes int64
@@ -56,6 +57,7 @@ func Load() Config {
 		Address:                          envOr("ATRI_ADDR", ":8080"),
 		DatabasePath:                     envOr("ATRI_DB_PATH", "./data/atri-games.db"),
 		AssetRoot:                        envOr("ATRI_ASSET_ROOT", "./assets"),
+		AvatarMaxBytes:                   envInt64("ATRI_AVATAR_MAX_BYTES", 2*1024*1024),
 		GameCoverMaxBytes:                envInt64("ATRI_GAME_COVER_MAX_BYTES", 10*1024*1024),
 		GamePackageMaxBytes:              envInt64("ATRI_GAME_PACKAGE_MAX_BYTES", 512*1024*1024),
 		GamePackageMaxUnpackedBytes:      envInt64("ATRI_GAME_PACKAGE_MAX_UNPACKED_BYTES", 2*1024*1024*1024),

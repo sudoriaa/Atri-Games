@@ -36,8 +36,11 @@ export interface GamePlatformContext {
 
 export interface User {
   id: string;
+  /** Immutable public account number. Internal IDs remain opaque strings. */
+  userNumber: number;
   email: string;
   displayName: string;
+  avatarUrl: string;
   role: UserRole;
   status: UserStatus;
   createdAt: string;
@@ -97,7 +100,9 @@ export interface GameComment {
   gameId: string;
   parentId?: string;
   authorId: string;
+  authorUserNumber: number;
   authorName: string;
+  authorAvatarUrl: string;
   authorRole: UserRole;
   body: string;
   likeCount: number;
@@ -193,7 +198,7 @@ export interface GameSessionTicket {
   ticket: string;
   expiresAt: string;
   game?: { id: string; slug: string };
-  user?: { id: string; displayName: string };
+  user?: { id: string; userNumber: number; displayName: string; avatarUrl: string };
 }
 
 export interface GameDataRecord<T = unknown> {
@@ -311,8 +316,14 @@ export class ApiClient {
     return this.request<User>("/me");
   }
 
-  updateMe(input: { displayName: string }) {
+  updateMe(input: { displayName?: string; avatarUrl?: string }) {
     return this.request<User>("/me", { method: "PATCH", body: JSON.stringify(input) });
+  }
+
+  uploadAvatar(avatar: Blob) {
+    const body = new FormData();
+    body.append("avatar", avatar, typeof File !== "undefined" && avatar instanceof File ? avatar.name : "avatar");
+    return this.request<User>("/me/avatar", { method: "POST", body });
   }
 
   categories() {

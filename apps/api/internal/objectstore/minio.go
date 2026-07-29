@@ -44,10 +44,11 @@ func (DisabledStore) Ensure(context.Context) error                  { return nil
 func (DisabledStore) Sync(context.Context, string, ...string) error { return nil }
 
 // SyncManagedAssetRoot performs the startup reconciliation. It includes the
-// legacy root-level covers shipped with the initial catalog as well as every
-// game-specific directory, and removes stale objects from the same namespaces.
+// legacy root-level covers shipped with the initial catalog, game packages,
+// and immutable player avatars, then removes stale objects from the same
+// namespaces.
 func SyncManagedAssetRoot(ctx context.Context, store Store, assetRoot string) error {
-	return store.Sync(ctx, assetRoot, "covers", "demos", "playables")
+	return store.Sync(ctx, assetRoot, "avatars", "covers", "demos", "playables")
 }
 
 type minioStore struct {
@@ -110,10 +111,10 @@ func (store *minioStore) Ensure(ctx context.Context) error {
 	return nil
 }
 
-// Sync mirrors each complete managed prefix (covers/<slug>,
+// Sync mirrors each complete managed prefix (avatars/<user>, covers/<slug>,
 // playables/<slug>, or demos/<slug>) and removes obsolete objects under that
 // same prefix. It rejects dot workspaces, symbolic links and unsafe paths so
-// private import/delete receipts never leave the local volume.
+// private upload/import/delete workspaces never leave the local volume.
 func (store *minioStore) Sync(ctx context.Context, assetRoot string, prefixes ...string) error {
 	for _, rawPrefix := range prefixes {
 		relative, err := managedPrefix(rawPrefix)
@@ -293,10 +294,10 @@ func ensureTrailingSlash(value string) string {
 func managedPrefix(value string) (string, error) {
 	clean := pathpkg.Clean(strings.Trim(strings.TrimSpace(value), "/"))
 	segments := strings.Split(clean, "/")
-	if len(segments) == 1 && (segments[0] == "covers" || segments[0] == "demos" || segments[0] == "playables") {
+	if len(segments) == 1 && (segments[0] == "avatars" || segments[0] == "covers" || segments[0] == "demos" || segments[0] == "playables") {
 		return clean, nil
 	}
-	if len(segments) != 2 || (segments[0] != "covers" && segments[0] != "demos" && segments[0] != "playables") || !safeSegment(segments[1]) {
+	if len(segments) != 2 || (segments[0] != "avatars" && segments[0] != "covers" && segments[0] != "demos" && segments[0] != "playables") || !safeSegment(segments[1]) {
 		return "", fmt.Errorf("invalid managed object prefix %q", value)
 	}
 	return clean, nil

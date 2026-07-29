@@ -19,6 +19,7 @@ Thumbs.db
 
 # Logs and local caches
 *.log
+.learnings/
 .turbo/
 .pnpm-store/
 

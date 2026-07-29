@@ -190,7 +190,7 @@ func (s *Store) commentLikeCount(commentID string) (int64, error) {
 }
 
 const commentSelect = `SELECT
-	cm.id,cm.game_id,COALESCE(cm.parent_id,''),cm.user_id,COALESCE(u.display_name,'已注销'),COALESCE(u.role,'user'),
+	cm.id,cm.game_id,COALESCE(cm.parent_id,''),cm.user_id,COALESCE(u.user_number,0),COALESCE(u.display_name,'已注销'),COALESCE(u.avatar_url,''),COALESCE(u.role,'user'),
 	cm.body,
 	(SELECT COUNT(*) FROM game_comment_likes cl WHERE cl.comment_id=cm.id),
 	CASE WHEN ?='' THEN 0 ELSE EXISTS(SELECT 1 FROM game_comment_likes ucl WHERE ucl.comment_id=cm.id AND ucl.user_id=?) END,
@@ -201,7 +201,7 @@ const commentSelect = `SELECT
 func scanComment(row interface{ Scan(...any) error }) (GameComment, error) {
 	var item GameComment
 	if err := row.Scan(
-		&item.ID, &item.GameID, &item.ParentID, &item.AuthorID, &item.AuthorName, &item.AuthorRole,
+		&item.ID, &item.GameID, &item.ParentID, &item.AuthorID, &item.AuthorUserNumber, &item.AuthorName, &item.AuthorAvatarURL, &item.AuthorRole,
 		&item.Body, &item.LikeCount, &item.IsLiked, &item.ReplyCount, &item.CreatedAt, &item.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

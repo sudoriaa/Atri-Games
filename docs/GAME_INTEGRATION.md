@@ -271,13 +271,52 @@ const atri = createAtriGame();
 atri.on("pause", () => game.pause());
 atri.on("resume", () => game.resume());
 atri.on("exit", () => {
-  // 显示自己的退出提示或返回按钮
+  // 退出时保存本地临时状态、关闭音频等。
+  game.saveBeforeLeaving();
 });
 
 atri.ready({ build: "1.0.0" });
 ```
 
-没有 Atri 宿主时，SDK 会退化为本地行为或空操作，游戏仍可以直接在自己的域名运行。
+`exit()` 会先触发本地 `exit` 事件，再通知 Atri 宿主或使用平台提供的返回地址。页面隐藏、离开页面和平台菜单打开会触发 `pause`；重新可见或菜单关闭会触发 `resume`。销毁单页游戏实例时调用 `atri.dispose()`，避免保留浏览器事件监听器。
+
+没有 Atri 宿主时，SDK 会退化为本地行为或空操作，游戏仍可以直接在自己的域名运行。完整 API、事件类型与错误处理见 [`@atri/game-sdk` README](../packages/game-sdk/README.md)。
+
+### 玩家展示资料
+
+已登录且启用平台身份、存档或匹配的游戏可以读取最小展示资料：
+
+```js
+const player = atri.identity.getUser();
+
+if (player) {
+  nickname.textContent = player.displayName ?? `玩家 #${player.userNumber ?? player.id}`;
+  avatar.src = player.avatarUrl ?? "/images/default-avatar.png";
+}
+```
+
+返回对象仅包含 `id`、`userNumber`、`displayName` 和 `avatarUrl`。`userNumber` 从 1 开始递增，适合展示；它和 `id` 都不是授权凭据。游戏不会取得玩家邮箱、角色或平台登录令牌。兼容旧的启动交接时，资料可能只有 `{ id }`，匿名启动时可能为 `null`，因此请始终保留昵称和头像的本地回退。
+
+### 错误处理
+
+平台服务调用失败时，区分启动上下文和 HTTP 错误，不要让存档或匹配失败阻断单机核心流程：
+
+```js
+import { AtriGameContextError, AtriPlatformError } from "@atri/game-sdk";
+
+try {
+  await atri.storage.set("progress", { level: 3 });
+} catch (error) {
+  if (error instanceof AtriGameContextError) {
+    showOfflineSaveNotice();
+  } else if (error instanceof AtriPlatformError) {
+    console.warn(error.status, error.code, error.message);
+    showRetryNotice();
+  } else {
+    throw error;
+  }
+}
+```
 
 ## 平台票据、SQLite 数据与匹配
 

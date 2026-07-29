@@ -18,6 +18,7 @@ func TestLoadDefaults(t *testing.T) {
 		"ATRI_ADDR",
 		"ATRI_DB_PATH",
 		"ATRI_ASSET_ROOT",
+		"ATRI_AVATAR_MAX_BYTES",
 		"ATRI_GAME_COVER_MAX_BYTES",
 		"ATRI_GAME_PACKAGE_MAX_BYTES",
 		"ATRI_GAME_PACKAGE_MAX_UNPACKED_BYTES",
@@ -44,6 +45,7 @@ func TestLoadDefaults(t *testing.T) {
 
 	cfg := Load()
 	if cfg.Address != ":8080" || cfg.DatabasePath != "./data/atri-games.db" || cfg.AssetRoot != "./assets" ||
+		cfg.AvatarMaxBytes != 2*1024*1024 ||
 		cfg.GameCoverMaxBytes != 10*1024*1024 ||
 		cfg.GamePackageMaxBytes != 512*1024*1024 || cfg.GamePackageMaxUnpackedBytes != 2*1024*1024*1024 ||
 		cfg.GamePackageMaxFiles != 20000 || cfg.GameTicketTTL != 15*time.Minute {
@@ -70,6 +72,7 @@ func TestLoadEnvironmentOverrides(t *testing.T) {
 	t.Setenv("ATRI_ADDR", " 127.0.0.1:9090 ")
 	t.Setenv("ATRI_DB_PATH", " custom.db ")
 	t.Setenv("ATRI_ASSET_ROOT", " /srv/atri/assets ")
+	t.Setenv("ATRI_AVATAR_MAX_BYTES", "123456")
 	t.Setenv("ATRI_GAME_COVER_MAX_BYTES", "234567")
 	t.Setenv("ATRI_GAME_PACKAGE_MAX_BYTES", "123456")
 	t.Setenv("ATRI_GAME_PACKAGE_MAX_UNPACKED_BYTES", "654321")
@@ -93,6 +96,7 @@ func TestLoadEnvironmentOverrides(t *testing.T) {
 
 	cfg := Load()
 	if cfg.Address != "127.0.0.1:9090" || cfg.DatabasePath != "custom.db" || cfg.AssetRoot != "/srv/atri/assets" || cfg.JWTSecret != "custom-secret" ||
+		cfg.AvatarMaxBytes != 123456 ||
 		cfg.GameCoverMaxBytes != 234567 ||
 		cfg.GamePackageMaxBytes != 123456 || cfg.GamePackageMaxUnpackedBytes != 654321 || cfg.GamePackageMaxFiles != 42 ||
 		cfg.GameTicketTTL != 10*time.Minute {

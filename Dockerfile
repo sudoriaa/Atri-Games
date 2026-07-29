@@ -67,6 +67,7 @@ RUN apk add --no-cache ca-certificates tzdata \
     && adduser -S -D -H -u 10001 -G atri atri \
     && install -d -o atri -g atri -m 0750 \
       /assets \
+      /assets/avatars \
       /assets/covers \
       /assets/demos \
       /assets/playables \

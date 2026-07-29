@@ -1,4 +1,4 @@
-import { gameRequiresLogin, type GameShareChannel, type LaunchResponse } from "@atri/shared";
+import { gameRequiresLogin, type GameShareChannel, type LaunchResponse, type User } from "@atri/shared";
 import { ArrowLeft, ArrowUpRight, Cloud, Code2, ExternalLink, Heart, LogIn, MessageSquare, Share2, ShieldCheck, Star, WifiOff } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -15,7 +15,7 @@ const GAME_HANDOFF_VERSION = 1;
 // Origin without becoming part of the URL, browser history, Referer header or
 // server access logs. The game-origin bootstrap consumes and clears it before
 // the package's own scripts execute.
-function gameHandoff(response: LaunchResponse, slug: string) {
+function gameHandoff(response: LaunchResponse, slug: string, user: User | null) {
   if (!response.gameTicket) return "";
   return JSON.stringify({
     source: GAME_HANDOFF_SOURCE,
@@ -25,6 +25,19 @@ function gameHandoff(response: LaunchResponse, slug: string) {
     apiBaseUrl: response.apiBase ?? response.apiBaseUrl ?? "/api/v1",
     returnUrl: `/games/${encodeURIComponent(slug)}`,
     parentOrigin: window.location.origin,
+    ...(user
+      ? {
+          // Games receive the same minimal public profile that the scoped
+          // ticket endpoint returns. Email, role and the platform session are
+          // intentionally never included in the cross-origin handoff.
+          user: {
+            id: user.id,
+            userNumber: user.userNumber,
+            displayName: user.displayName,
+            avatarUrl: user.avatarUrl,
+          },
+        }
+      : {}),
   });
 }
 
@@ -51,7 +64,7 @@ export function GamePage() {
     try {
       const result = await api.launch(slug);
       const launchUrl = result.launchUrl;
-      const handoff = gameHandoff(result, slug);
+      const handoff = gameHandoff(result, slug, user);
       if (result.openIn === "new-tab") {
         if (popup && !popup.closed) {
           if (handoff) popup.name = handoff;

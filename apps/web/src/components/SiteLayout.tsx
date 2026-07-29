@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { Brand } from "./Brand";
+import { UserAvatar } from "./UserAvatar";
 
 export function SiteLayout() {
   const { user, logout } = useAuth();
@@ -41,7 +42,7 @@ export function SiteLayout() {
           {user ? (
             <>
               <Link className="account-chip" to="/profile">
-                <span className="avatar">{user.displayName.slice(0, 1).toUpperCase()}</span>
+                <UserAvatar className="avatar" name={user.displayName} src={user.avatarUrl} decorative />
                 <span><small>欢迎回来</small>{user.displayName}</span>
               </Link>
               <button className="icon-button" onClick={logout} aria-label="退出登录"><LogOut size={18} /></button>

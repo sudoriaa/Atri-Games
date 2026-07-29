@@ -4,6 +4,69 @@ const HANDOFF_SOURCE = "atri-game-launch";
 const HANDOFF_VERSION = 1;
 const FRAGMENT_CONTEXT_KEYS = ["atri_ticket", "atri_game", "atri_api"];
 
+export class AtriSdkError extends Error {
+  constructor(message, code = "atri_sdk_error") {
+    super(message);
+    this.name = "AtriSdkError";
+    this.code = code;
+  }
+}
+
+export class AtriPlatformError extends AtriSdkError {
+  constructor(message, { status = 0, code = "platform_request_failed" } = {}) {
+    super(message, code);
+    this.name = "AtriPlatformError";
+    this.status = status;
+  }
+}
+
+export class AtriGameContextError extends AtriSdkError {
+  constructor(message, code) {
+    super(message, code);
+    this.name = "AtriGameContextError";
+  }
+}
+
+function nonEmptyString(value) {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function validUserNumber(value) {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 1 ? value : undefined;
+}
+
+// Keep identity data deliberately narrow. It is useful for player-facing UI,
+// but must not become a way to expose a complete platform account to a game.
+function normalizeGameUser(value, { fallbackId, ticketUserId } = {}) {
+  const fallback = nonEmptyString(fallbackId);
+  const signedId = nonEmptyString(ticketUserId);
+  try {
+    if (!isRecord(value)) return signedId || fallback ? { id: signedId ?? fallback } : null;
+    const suppliedId = nonEmptyString(value.id);
+    const id = signedId ?? suppliedId ?? fallback;
+    if (!id) return null;
+
+    // The ticket subject is authoritative when one exists. A mismatched handoff
+    // must not attach another player's display details to that identity.
+    if (signedId && suppliedId && suppliedId !== signedId) return { id };
+
+    const user = { id };
+    const userNumber = validUserNumber(value.userNumber);
+    const displayName = nonEmptyString(value.displayName);
+    const avatarUrl = nonEmptyString(value.avatarUrl);
+    if (userNumber !== undefined) user.userNumber = userNumber;
+    if (displayName !== undefined) user.displayName = displayName;
+    if (avatarUrl !== undefined) user.avatarUrl = avatarUrl;
+    return user;
+  } catch {
+    return fallback || signedId ? { id: signedId ?? fallback } : null;
+  }
+}
+
 function rawFragment() {
   return globalThis.location?.hash?.replace(/^#/, "") ?? "";
 }
@@ -163,7 +226,7 @@ export class AtriGame {
     };
     this.identity = {
       getTicket: () => this.requestTicket(),
-      getUser: () => this.context.user ?? (this.userId ? { id: this.userId } : null),
+      getUser: () => this._gameUser(),
     };
     if (this.context.ticket) {
       clearFragmentTicket();
@@ -214,8 +277,22 @@ export class AtriGame {
     return Boolean(this.ticket);
   }
 
+  _gameUser() {
+    const ticketUserId = this.ticket ? readTicketClaim(this.ticket, "sub") : undefined;
+    return normalizeGameUser(this.context.user, { fallbackId: this.userId, ticketUserId });
+  }
+
+  _updateGameUser(value) {
+    if (value === undefined) return;
+    const ticketUserId = this.ticket ? readTicketClaim(this.ticket, "sub") : undefined;
+    const user = normalizeGameUser(value, { fallbackId: this.userId, ticketUserId });
+    if (user) this.context.user = user;
+  }
+
   async _request(path, { method = "GET", body, token = this.ticket } = {}) {
-    if (typeof this.fetchImpl !== "function") throw new Error("Atri platform API is not available in this runtime");
+    if (typeof this.fetchImpl !== "function") {
+      throw new AtriSdkError("Atri platform API is not available in this runtime", "api_unavailable");
+    }
     const headers = new Headers();
     if (body !== undefined) headers.set("Content-Type", "application/json");
     if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -231,23 +308,24 @@ export class AtriGame {
       // Empty 204 responses are valid for delete operations.
     }
     if (!response.ok) {
-      const message = payload?.error?.message ?? payload?.message ?? `Atri platform request failed (${response.status})`;
-      const error = new Error(message);
-      error.name = "AtriPlatformError";
-      error.status = response.status;
-      error.code = payload?.error?.code ?? "platform_request_failed";
-      throw error;
+      const responseMessage = payload?.error?.message ?? payload?.message;
+      const responseCode = payload?.error?.code;
+      const message = typeof responseMessage === "string" ? responseMessage : `Atri platform request failed (${response.status})`;
+      throw new AtriPlatformError(message, {
+        status: response.status,
+        code: typeof responseCode === "string" ? responseCode : "platform_request_failed",
+      });
     }
     return payload;
   }
 
   _requireGameSlug() {
-    if (!this.gameSlug) throw new Error("Atri game context is missing a game slug");
+    if (!this.gameSlug) throw new AtriGameContextError("Atri game context is missing a game slug", "game_context_missing");
     return encodeURIComponent(this.gameSlug);
   }
 
   _requireTicket() {
-    if (!this.ticket) throw new Error("登录后才能使用 Atri 游戏服务");
+    if (!this.ticket) throw new AtriGameContextError("Sign in before using Atri game services", "authentication_required");
     return this.ticket;
   }
 
@@ -280,9 +358,10 @@ export class AtriGame {
     })
       .then((result) => {
         if (typeof result?.ticket !== "string" || !result.ticket) {
-          throw new Error("Atri ticket refresh returned no ticket");
+          throw new AtriSdkError("Atri ticket refresh returned no ticket", "ticket_refresh_invalid");
         }
         this.context.ticket = result.ticket;
+        this._updateGameUser(result.user);
         this._scheduleTicketRefresh();
         return result.ticket;
       })
@@ -312,7 +391,11 @@ export class AtriGame {
       return this.ticket;
     }
     const result = await this._request(`/games/${slug}/ticket`, { method: "POST", token: platformToken });
-    this.context.ticket = result?.ticket;
+    if (typeof result?.ticket !== "string" || !result.ticket) {
+      throw new AtriSdkError("Atri ticket request returned no ticket", "ticket_request_invalid");
+    }
+    this.context.ticket = result.ticket;
+    this._updateGameUser(result.user);
     this._scheduleTicketRefresh();
     clearFragmentTicket();
     return this.context.ticket;
@@ -382,6 +465,7 @@ export class AtriGame {
   }
 
   exit() {
+    this._emit("exit");
     safePost({ type: "exit" }, this.context);
     if (typeof this.context.returnUrl === "string" && this.context.returnUrl) globalThis.location?.assign(this.context.returnUrl);
   }

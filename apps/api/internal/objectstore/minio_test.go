@@ -59,7 +59,7 @@ func TestCollectFilesRejectsSymbolicLinksAndSortsRegularFiles(t *testing.T) {
 }
 
 func TestManagedPrefixAllowsOnlyPublicAssetNamespaces(t *testing.T) {
-	for _, value := range []string{"covers", "covers/game-1", "demos/game-1", "playables/game-1"} {
+	for _, value := range []string{"avatars", "avatars/usr_abc", "covers", "covers/game-1", "demos/game-1", "playables/game-1"} {
 		if _, err := managedPrefix(value); err != nil {
 			t.Fatalf("managedPrefix(%q): %v", value, err)
 		}

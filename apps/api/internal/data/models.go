@@ -2,9 +2,11 @@ package data
 
 type User struct {
 	ID           string `json:"id"`
+	UserNumber   int64  `json:"userNumber"`
 	Email        string `json:"email"`
 	PasswordHash string `json:"-"`
 	DisplayName  string `json:"displayName"`
+	AvatarURL    string `json:"avatarUrl"`
 	Role         string `json:"role"`
 	Status       string `json:"status"`
 	CreatedAt    string `json:"createdAt"`
@@ -59,20 +61,22 @@ type Game struct {
 // GameComment is one visible message in a game's discussion thread. Replies
 // carry ParentID and are returned nested under their root comment.
 type GameComment struct {
-	ID         string        `json:"id"`
-	GameID     string        `json:"gameId"`
-	ParentID   string        `json:"parentId,omitempty"`
-	AuthorID   string        `json:"authorId"`
-	AuthorName string        `json:"authorName"`
-	AuthorRole string        `json:"authorRole"`
-	Body       string        `json:"body"`
-	LikeCount  int64         `json:"likeCount"`
-	IsLiked    bool          `json:"isLiked"`
-	ReplyCount int64         `json:"replyCount"`
-	CanDelete  bool          `json:"canDelete"`
-	CreatedAt  string        `json:"createdAt"`
-	UpdatedAt  string        `json:"updatedAt"`
-	Replies    []GameComment `json:"replies,omitempty"`
+	ID               string        `json:"id"`
+	GameID           string        `json:"gameId"`
+	ParentID         string        `json:"parentId,omitempty"`
+	AuthorID         string        `json:"authorId"`
+	AuthorUserNumber int64         `json:"authorUserNumber"`
+	AuthorName       string        `json:"authorName"`
+	AuthorAvatarURL  string        `json:"authorAvatarUrl"`
+	AuthorRole       string        `json:"authorRole"`
+	Body             string        `json:"body"`
+	LikeCount        int64         `json:"likeCount"`
+	IsLiked          bool          `json:"isLiked"`
+	ReplyCount       int64         `json:"replyCount"`
+	CanDelete        bool          `json:"canDelete"`
+	CreatedAt        string        `json:"createdAt"`
+	UpdatedAt        string        `json:"updatedAt"`
+	Replies          []GameComment `json:"replies,omitempty"`
 }
 
 // GameCommentList is a page of root comments. Total counts root comments only,

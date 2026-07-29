@@ -3,6 +3,7 @@ import { Heart, MessageSquare, Reply, Send, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
+import { UserAvatar } from "./UserAvatar";
 
 const PAGE_SIZE = 20;
 const MAX_BODY = 1000;
@@ -11,10 +12,6 @@ interface CommentSectionProps {
   slug: string;
   /** Lets the detail page keep its header counter in step with the thread. */
   onCountChange: (delta: number) => void;
-}
-
-function initials(name: string) {
-  return name.trim().slice(0, 1).toUpperCase() || "?";
 }
 
 function formatTime(value: string) {
@@ -179,10 +176,16 @@ export function CommentSection({ slug, onCountChange }: CommentSectionProps) {
 
   const renderComment = (comment: GameComment, isReply = false) => (
     <article key={comment.id} className={`comment${isReply ? " comment--reply" : ""}`}>
-      <div className="comment__avatar" aria-hidden="true">{initials(comment.authorName)}</div>
+      <UserAvatar
+        className="comment__avatar"
+        name={comment.authorName}
+        src={comment.authorAvatarUrl}
+        decorative
+      />
       <div className="comment__main">
         <div className="comment__meta">
           <strong>{comment.authorName}</strong>
+          {comment.authorUserNumber > 0 && <span className="comment__user-id">用户 ID: {comment.authorUserNumber}</span>}
           {comment.authorRole === "admin" && <span className="comment__badge">管理员</span>}
           <time dateTime={comment.createdAt}>{formatTime(comment.createdAt)}</time>
         </div>

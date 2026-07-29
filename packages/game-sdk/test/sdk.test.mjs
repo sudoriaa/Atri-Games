@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createAtriGame, version } from "../src/index.js";
+import { AtriGameContextError, AtriPlatformError, AtriSdkError, createAtriGame, version } from "../src/index.js";
 
 function fixtureTicket(payload) {
   return `eyJhbGciOiJIUzI1NiJ9.${Buffer.from(JSON.stringify(payload)).toString("base64url")}.signature`;
@@ -23,6 +23,133 @@ test("SDK emits local lifecycle events without a host", () => {
   off();
   game.ready({ ok: false });
   assert.deepEqual(events, [{ ok: true }]);
+  game.dispose();
+});
+
+test("SDK emits a local exit lifecycle event", () => {
+  const previousLocation = Object.getOwnPropertyDescriptor(globalThis, "location");
+  const events = [];
+  Object.defineProperty(globalThis, "location", {
+    configurable: true,
+    value: { assign: () => events.push("navigate") },
+  });
+  try {
+    const game = createAtriGame({ context: { returnUrl: "/games/demo-game" } });
+    game.on("exit", () => events.push("exit"));
+    game.exit();
+    assert.deepEqual(events, ["exit", "navigate"]);
+    game.dispose();
+  } finally {
+    if (previousLocation) Object.defineProperty(globalThis, "location", previousLocation);
+    else delete globalThis.location;
+  }
+});
+
+test("SDK exposes only the supported identity display fields", () => {
+  const ticket = fixtureTicket({ sub: "usr-player", gameId: "game_1" });
+  const game = createAtriGame({
+    context: {
+      ticket,
+      user: {
+        id: "usr-player",
+        userNumber: 7,
+        displayName: "Player One",
+        avatarUrl: "https://cdn.example/avatar.webp",
+        email: "private@example.test",
+        role: "admin",
+      },
+    },
+  });
+
+  assert.deepEqual(game.identity.getUser(), {
+    id: "usr-player",
+    userNumber: 7,
+    displayName: "Player One",
+    avatarUrl: "https://cdn.example/avatar.webp",
+  });
+  game.dispose();
+
+  const mismatched = createAtriGame({
+    context: {
+      ticket,
+      user: { id: "usr-other", userNumber: 8, displayName: "Wrong player" },
+    },
+  });
+  assert.deepEqual(mismatched.identity.getUser(), { id: "usr-player" });
+  mismatched.dispose();
+});
+
+test("SDK updates identity display data from ticket responses", async () => {
+  const ticket = fixtureTicket({ sub: "usr-player", gameId: "game_1" });
+  const game = createAtriGame({
+    context: {
+      gameSlug: "demo-game",
+      platformToken: "platform-token",
+      apiBaseUrl: "https://atri.example/api/v1",
+    },
+    fetch: async (_url, init) => {
+      assert.equal(init.headers.get("Authorization"), "Bearer platform-token");
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return {
+            ticket,
+            user: {
+              id: "usr-player",
+              userNumber: 7,
+              displayName: "Player One",
+              avatarUrl: "https://cdn.example/avatar.webp",
+              email: "private@example.test",
+            },
+          };
+        },
+      };
+    },
+  });
+
+  assert.equal(await game.identity.getTicket(), ticket);
+  assert.deepEqual(game.identity.getUser(), {
+    id: "usr-player",
+    userNumber: 7,
+    displayName: "Player One",
+    avatarUrl: "https://cdn.example/avatar.webp",
+  });
+  game.dispose();
+});
+
+test("SDK exposes typed context and platform request errors", async () => {
+  const missingContext = createAtriGame({ ticket: fixtureTicket({ sub: "usr-player", gameId: "game_1" }) });
+  await assert.rejects(
+    () => missingContext.storage.get("progress"),
+    (error) => error instanceof AtriGameContextError && error.code === "game_context_missing",
+  );
+  missingContext.dispose();
+
+  const game = createAtriGame({
+    context: {
+      gameSlug: "demo-game",
+      ticket: fixtureTicket({ sub: "usr-player", gameId: "game_1" }),
+      apiBaseUrl: "https://atri.example/api/v1",
+    },
+    fetch: async () => ({
+      ok: false,
+      status: 429,
+      async json() {
+        return { error: { code: "rate_limited", message: "Try again later" } };
+      },
+    }),
+  });
+  await assert.rejects(
+    () => game.storage.get("progress"),
+    (error) => {
+      assert.equal(error instanceof AtriPlatformError, true);
+      assert.equal(error instanceof AtriSdkError, true);
+      assert.equal(error.status, 429);
+      assert.equal(error.code, "rate_limited");
+      return true;
+    },
+  );
   game.dispose();
 });
 

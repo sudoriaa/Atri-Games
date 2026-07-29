@@ -48,6 +48,7 @@ type Server struct {
 	gameReadLimiter  *windowLimiter
 	gameWriteLimiter *windowLimiter
 	assets           objectstore.Store
+	avatarMu         sync.Mutex
 }
 
 func New(cfg config.Config, store *data.Store, tokens *security.TokenManager, logger *slog.Logger) *Server {
@@ -78,6 +79,7 @@ func NewWithObjectStore(cfg config.Config, store *data.Store, tokens *security.T
 	mux.Handle("POST /api/v1/auth/login", server.limiter.wrap(http.HandlerFunc(server.login)))
 	mux.Handle("GET /api/v1/me", server.requireUser(http.HandlerFunc(server.me)))
 	mux.Handle("PATCH /api/v1/me", server.requireUser(http.HandlerFunc(server.updateMe)))
+	mux.Handle("POST /api/v1/me/avatar", server.requireUser(http.HandlerFunc(server.updateAvatar)))
 	mux.HandleFunc("GET /api/v1/categories", server.categories)
 	mux.Handle("GET /api/v1/games", server.optionalUser(http.HandlerFunc(server.games)))
 	mux.Handle("GET /api/v1/games/{slug}", server.optionalUser(http.HandlerFunc(server.game)))
@@ -228,20 +230,46 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) updateMe(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		DisplayName string `json:"displayName"`
+		DisplayName *string `json:"displayName"`
+		AvatarURL   *string `json:"avatarUrl"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	input.DisplayName = strings.TrimSpace(input.DisplayName)
-	if count := utf8.RuneCountInString(input.DisplayName); count < 2 || count > 40 {
-		writeError(w, http.StatusUnprocessableEntity, "invalid_display_name", "昵称需要 2-40 个字符")
+	if input.DisplayName == nil && input.AvatarURL == nil {
+		writeError(w, http.StatusUnprocessableEntity, "invalid_profile", "请提供要更新的资料")
 		return
 	}
-	user, err := s.store.UpdateProfile(currentUser(r).ID, input.DisplayName)
+	current := currentUser(r)
+	displayName := current.DisplayName
+	if input.DisplayName != nil {
+		displayName = strings.TrimSpace(*input.DisplayName)
+		if count := utf8.RuneCountInString(displayName); count < 2 || count > 40 {
+			writeError(w, http.StatusUnprocessableEntity, "invalid_display_name", "昵称需要 2-40 个字符")
+			return
+		}
+	}
+	avatarURL := current.AvatarURL
+	if input.AvatarURL != nil {
+		avatarURL = strings.TrimSpace(*input.AvatarURL)
+		if avatarURL != "" && !validWebURL(avatarURL, false) && !data.IsManagedAvatarURL(current.ID, avatarURL) {
+			writeError(w, http.StatusUnprocessableEntity, "invalid_avatar_url", "头像地址必须为空、HTTPS 图片地址或当前账号上传的站内头像")
+			return
+		}
+	}
+
+	s.avatarMu.Lock()
+	defer s.avatarMu.Unlock()
+	user, err := s.store.UpdateProfile(current.ID, displayName, avatarURL)
 	if err != nil {
 		s.writeStoreError(w, r, err)
 		return
+	}
+	if current.AvatarURL != avatarURL {
+		if err := data.RemoveManagedAvatar(s.config.AssetRoot, current.ID, current.AvatarURL); err != nil {
+			s.logger.Error("remove replaced avatar", "userId", current.ID, "error", err)
+		}
+		s.syncGameObjects("avatars/" + current.ID)
 	}
 	writeJSON(w, http.StatusOK, user)
 }
@@ -372,9 +400,11 @@ func (s *Server) writeGameTicket(w http.ResponseWriter, user data.User, platform
 			"id":   platform.GameID,
 			"slug": platform.Slug,
 		},
-		"user": map[string]string{
+		"user": map[string]any{
 			"id":          user.ID,
+			"userNumber":  user.UserNumber,
 			"displayName": user.DisplayName,
+			"avatarUrl":   user.AvatarURL,
 		},
 		"scopes": platform.Scopes(),
 	})

@@ -23,6 +23,8 @@ var (
 	ErrAssetShared       = errors.New("managed asset is referenced by another game")
 )
 
+const maxUserNumber int64 = 1<<63 - 1
+
 type Store struct {
 	db           *sql.DB
 	gameMu       sync.Mutex
@@ -83,12 +85,18 @@ func (s *Store) MigrateAndSeed(adminEmail, adminHash string) error {
 		)`,
 		`CREATE TABLE IF NOT EXISTS users (
 			id TEXT PRIMARY KEY,
+			user_number INTEGER NOT NULL UNIQUE CHECK(user_number > 0),
 			email TEXT NOT NULL UNIQUE COLLATE NOCASE,
 			password_hash TEXT NOT NULL,
 			display_name TEXT NOT NULL,
+			avatar_url TEXT NOT NULL DEFAULT '',
 			role TEXT NOT NULL CHECK(role IN ('user', 'admin')) DEFAULT 'user',
 			status TEXT NOT NULL CHECK(status IN ('active', 'suspended')) DEFAULT 'active',
 			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+		)`,
+		`CREATE TABLE IF NOT EXISTS user_number_sequence (
+			singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+			next_value INTEGER NOT NULL CHECK(next_value > 0)
 		)`,
 		`CREATE TABLE IF NOT EXISTS categories (
 			id TEXT PRIMARY KEY,
@@ -234,6 +242,9 @@ func (s *Store) MigrateAndSeed(adminEmail, adminHash string) error {
 			return err
 		}
 	}
+	if err := ensureUserColumns(tx); err != nil {
+		return err
+	}
 	if err := ensureLaunchOpenInColumn(tx); err != nil {
 		return err
 	}
@@ -244,6 +255,15 @@ func (s *Store) MigrateAndSeed(adminEmail, adminHash string) error {
 		return err
 	}
 	if err := s.seed(tx, adminEmail, adminHash, !gamesTableExisted); err != nil {
+		return err
+	}
+	if err := backfillUserNumbers(tx); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_user_number ON users(user_number)`); err != nil {
+		return err
+	}
+	if err := ensureUserNumberSequence(tx); err != nil {
 		return err
 	}
 	if err := migrateSeedLaunchURLs(tx); err != nil {
@@ -259,6 +279,168 @@ func (s *Store) MigrateAndSeed(adminEmail, adminHash string) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// ensureUserColumns upgrades databases created before public account numbers
+// and avatars were introduced. user_number stays nullable during the ALTER so
+// historical rows can receive deterministic values in backfillUserNumbers.
+func ensureUserColumns(tx *sql.Tx) error {
+	rows, err := tx.Query(`PRAGMA table_info(users)`)
+	if err != nil {
+		return err
+	}
+	columns := map[string]bool{}
+	for rows.Next() {
+		var (
+			cid          int
+			name         string
+			columnType   string
+			notNull      int
+			defaultValue sql.NullString
+			primaryKey   int
+		)
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			rows.Close()
+			return err
+		}
+		columns[name] = true
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if !columns["user_number"] {
+		if _, err := tx.Exec(`ALTER TABLE users ADD COLUMN user_number INTEGER`); err != nil {
+			return err
+		}
+	}
+	if !columns["avatar_url"] {
+		if _, err := tx.Exec(`ALTER TABLE users ADD COLUMN avatar_url TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type userNumberRow struct {
+	id     string
+	number sql.NullInt64
+}
+
+// backfillUserNumbers makes the seed administrator public user #1 and gives
+// pre-existing users stable numbers by their original creation order. Later
+// startups preserve already valid values, including any gaps caused by a
+// future account-deletion feature.
+func backfillUserNumbers(tx *sql.Tx) error {
+	rows, err := tx.Query(`SELECT id,user_number FROM users
+		ORDER BY CASE WHEN id='usr_admin' THEN 0 ELSE 1 END, created_at ASC, id ASC`)
+	if err != nil {
+		return err
+	}
+	items := []userNumberRow{}
+	for rows.Next() {
+		var item userNumberRow
+		if err := rows.Scan(&item.id, &item.number); err != nil {
+			rows.Close()
+			return err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	var (
+		adminFound  bool
+		needsRebuild bool
+		maxNumber   int64
+		seen        = map[int64]struct{}{}
+	)
+	for _, item := range items {
+		if item.id == "usr_admin" {
+			adminFound = true
+			if !item.number.Valid || item.number.Int64 != 1 {
+				needsRebuild = true
+			}
+		}
+		if !item.number.Valid {
+			continue
+		}
+		if item.number.Int64 <= 0 {
+			needsRebuild = true
+			continue
+		}
+		if _, duplicate := seen[item.number.Int64]; duplicate {
+			needsRebuild = true
+		}
+		seen[item.number.Int64] = struct{}{}
+		if item.number.Int64 > maxNumber {
+			maxNumber = item.number.Int64
+		}
+	}
+	if !adminFound {
+		return errors.New("seed administrator is missing")
+	}
+
+	if needsRebuild {
+		// Move every row through an unused positive range first. This keeps the
+		// repair safe when a partially applied migration already has a UNIQUE
+		// user_number index.
+		if maxNumber > maxUserNumber-2*int64(len(items)) {
+			return errors.New("user number range is exhausted")
+		}
+		temporaryStart := maxNumber + int64(len(items)) + 1
+		if temporaryStart <= maxNumber {
+			return errors.New("user number range is exhausted")
+		}
+		for index, item := range items {
+			if _, err := tx.Exec(`UPDATE users SET user_number=? WHERE id=?`, temporaryStart+int64(index), item.id); err != nil {
+				return err
+			}
+		}
+		for index, item := range items {
+			if _, err := tx.Exec(`UPDATE users SET user_number=? WHERE id=?`, int64(index+1), item.id); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	for _, item := range items {
+		if item.number.Valid {
+			continue
+		}
+		if maxNumber == maxUserNumber {
+			return errors.New("user number range is exhausted")
+		}
+		maxNumber++
+		if _, err := tx.Exec(`UPDATE users SET user_number=? WHERE id=?`, maxNumber, item.id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ensureUserNumberSequence preserves the next value independently of current
+// rows. That prevents a future account deletion from causing public user IDs
+// to be reused, while also repairing an old or partially initialized volume.
+func ensureUserNumberSequence(tx *sql.Tx) error {
+	var maxNumber int64
+	if err := tx.QueryRow(`SELECT COALESCE(MAX(user_number),0) FROM users`).Scan(&maxNumber); err != nil {
+		return err
+	}
+	if maxNumber == maxUserNumber {
+		return errors.New("user number range is exhausted")
+	}
+	nextValue := maxNumber + 1
+	_, err := tx.Exec(`INSERT INTO user_number_sequence(singleton,next_value) VALUES(1,?)
+		ON CONFLICT(singleton) DO UPDATE SET next_value=CASE
+			WHEN excluded.next_value > next_value THEN excluded.next_value
+			ELSE next_value
+		END`, nextValue)
+	return err
 }
 
 func ensureLaunchOpenInColumn(tx *sql.Tx) error {
@@ -399,7 +581,7 @@ func (s *Store) seed(tx *sql.Tx, adminEmail, adminHash string, initializeGames b
 	}
 
 	adminID := "usr_admin"
-	if _, err := tx.Exec(`INSERT OR IGNORE INTO users(id,email,password_hash,display_name,role,status) VALUES(?,?,?,?,?,?)`, adminID, adminEmail, adminHash, "Atri 管理员", "admin", "active"); err != nil {
+	if _, err := tx.Exec(`INSERT OR IGNORE INTO users(id,user_number,email,password_hash,display_name,role,status) VALUES(?,?,?,?,?,?,?)`, adminID, 1, adminEmail, adminHash, "Atri 管理员", "admin", "active"); err != nil {
 		return err
 	}
 
@@ -534,24 +716,47 @@ func newID(prefix string) string {
 
 func (s *Store) CreateUser(email, passwordHash, displayName string) (User, error) {
 	user := User{ID: newID("usr"), Email: strings.ToLower(email), DisplayName: displayName, Role: "user", Status: "active"}
-	_, err := s.db.Exec(`INSERT INTO users(id,email,password_hash,display_name,role,status) VALUES(?,?,?,?,?,?)`, user.ID, user.Email, passwordHash, user.DisplayName, user.Role, user.Status)
+	tx, err := s.db.Begin()
 	if err != nil {
+		return User{}, err
+	}
+	defer tx.Rollback()
+	if err := tx.QueryRow(`SELECT next_value FROM user_number_sequence WHERE singleton=1`).Scan(&user.UserNumber); err != nil {
+		return User{}, err
+	}
+	if user.UserNumber <= 0 || user.UserNumber == maxUserNumber {
+		return User{}, errors.New("user number range is exhausted")
+	}
+	nextValue := user.UserNumber + 1
+	result, err := tx.Exec(`UPDATE user_number_sequence SET next_value=? WHERE singleton=1 AND next_value=?`, nextValue, user.UserNumber)
+	if err != nil {
+		return User{}, err
+	}
+	if count, err := result.RowsAffected(); err != nil {
+		return User{}, err
+	} else if count != 1 {
+		return User{}, errors.New("user number sequence changed concurrently")
+	}
+	if _, err := tx.Exec(`INSERT INTO users(id,user_number,email,password_hash,display_name,role,status) VALUES(?,?,?,?,?,?,?)`, user.ID, user.UserNumber, user.Email, passwordHash, user.DisplayName, user.Role, user.Status); err != nil {
+		return User{}, err
+	}
+	if err := tx.Commit(); err != nil {
 		return User{}, err
 	}
 	return s.UserByID(user.ID)
 }
 
 func (s *Store) UserByEmail(email string) (User, error) {
-	return scanUser(s.db.QueryRow(`SELECT id,email,password_hash,display_name,role,status,created_at FROM users WHERE email=?`, strings.ToLower(email)))
+	return scanUser(s.db.QueryRow(`SELECT id,user_number,email,password_hash,display_name,avatar_url,role,status,created_at FROM users WHERE email=?`, strings.ToLower(email)))
 }
 
 func (s *Store) UserByID(id string) (User, error) {
-	return scanUser(s.db.QueryRow(`SELECT id,email,password_hash,display_name,role,status,created_at FROM users WHERE id=?`, id))
+	return scanUser(s.db.QueryRow(`SELECT id,user_number,email,password_hash,display_name,avatar_url,role,status,created_at FROM users WHERE id=?`, id))
 }
 
 func scanUser(row interface{ Scan(...any) error }) (User, error) {
 	var user User
-	if err := row.Scan(&user.ID, &user.Email, &user.PasswordHash, &user.DisplayName, &user.Role, &user.Status, &user.CreatedAt); err != nil {
+	if err := row.Scan(&user.ID, &user.UserNumber, &user.Email, &user.PasswordHash, &user.DisplayName, &user.AvatarURL, &user.Role, &user.Status, &user.CreatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return User{}, ErrNotFound
 		}
@@ -560,8 +765,8 @@ func scanUser(row interface{ Scan(...any) error }) (User, error) {
 	return user, nil
 }
 
-func (s *Store) UpdateProfile(userID, displayName string) (User, error) {
-	result, err := s.db.Exec(`UPDATE users SET display_name=? WHERE id=?`, displayName, userID)
+func (s *Store) UpdateProfile(userID, displayName, avatarURL string) (User, error) {
+	result, err := s.db.Exec(`UPDATE users SET display_name=?,avatar_url=? WHERE id=?`, displayName, avatarURL, userID)
 	if err != nil {
 		return User{}, err
 	}
@@ -572,7 +777,7 @@ func (s *Store) UpdateProfile(userID, displayName string) (User, error) {
 }
 
 func (s *Store) ListUsers() ([]User, error) {
-	rows, err := s.db.Query(`SELECT id,email,password_hash,display_name,role,status,created_at FROM users ORDER BY created_at DESC`)
+	rows, err := s.db.Query(`SELECT id,user_number,email,password_hash,display_name,avatar_url,role,status,created_at FROM users ORDER BY user_number DESC`)
 	if err != nil {
 		return nil, err
 	}

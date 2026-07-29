@@ -104,11 +104,11 @@ docker compose up --detach --build
 
 Caddy 会托管两个 SPA、代理 `/api/*`、维护 HTTPS 证书并发送安全头。SQLite 数据、后台管理的封面与本地试玩文件、Caddy 证书及配置分别保存在具名卷中。静态游戏使用独立的游戏 Origin（`ATRI_GAME_SITE_ADDRESS`），不会和门户的登录存储混用。生产容器以非 root 用户运行，并带只读文件系统、能力裁剪、资源限制和健康检查。
 
-API 镜像的 `/assets` 内置仓库中的 `apps/web/public/covers`、`apps/web/public/demos` 与初始化标记，并预留 `playables/` 静态游戏目录。首次挂载新的 `ATRI_ASSET_VOLUME` 时，Docker 会把这些初始内容写入空卷；Caddy 所在的 Web 服务要等 API 健康后才启动，因此不会先挂载空卷。API 以读写方式挂载 `/assets`，Caddy 以只读方式挂载同一目录。门户 Origin 只把 `/playables/*` 重定向到游戏 Origin，游戏 Origin 才读取静态包；资源被后台删除后不会从 Web 镜像或 SPA 回退页面重新出现，后续常规镜像升级也不会重新填充已初始化的卷。
+API 镜像的 `/assets` 内置仓库中的 `apps/web/public/covers`、`apps/web/public/demos` 与初始化标记，并预留 `avatars/`、`playables/` 目录。首次挂载新的 `ATRI_ASSET_VOLUME` 时，Docker 会把这些初始内容写入空卷；Caddy 所在的 Web 服务要等 API 健康后才启动，因此不会先挂载空卷。API 以读写方式挂载 `/assets`，Caddy 以只读方式挂载同一目录。门户 Origin 只把 `/playables/*` 重定向到游戏 Origin，游戏 Origin 才读取静态包；资源被后台删除后不会从 Web 镜像或 SPA 回退页面重新出现，后续常规镜像升级也不会重新填充已初始化的卷。
 
 ### MinIO 对象存储镜像
 
-生产 Compose 默认启动一个只在内部网络可见的 MinIO 实例。API 会在启动时创建并校验 `ATRI_OBJECT_STORAGE_BUCKET`，随后把 `/assets` 中的 `covers/`、`demos/` 与 `playables/` 完整镜像到对象存储；导入 `.atri`、上传/替换封面、切换外链封面和彻底删除游戏时，会立即同步对应游戏的对象前缀。对象使用 `assets/` 前缀、SHA-256 元数据和 MIME/缓存头，重复同步会跳过内容未变化的文件并移除已不在本地资源卷中的旧对象。
+生产 Compose 默认启动一个只在内部网络可见的 MinIO 实例。API 会在启动时创建并校验 `ATRI_OBJECT_STORAGE_BUCKET`，随后把 `/assets` 中的 `avatars/`、`covers/`、`demos/` 与 `playables/` 完整镜像到对象存储；导入 `.atri`、上传/替换封面或头像、切换外链媒体和彻底删除游戏时，会立即同步对应的对象前缀。对象使用 `assets/` 前缀、SHA-256 元数据和 MIME/缓存头，重复同步会跳过内容未变化的文件并移除已不在本地资源卷中的旧对象。
 
 本地资源卷仍是发布和删除事务的权威来源，Caddy 继续从该卷提供静态游戏文件。因此 MinIO 短暂重启不会导致已发布游戏停止访问；API 会记录并在下一次启动时完成全量对账。使用内置 MinIO 时，在生产 `.env` 中设置唯一的 `ATRI_MINIO_ROOT_USER` 与 `ATRI_MINIO_ROOT_PASSWORD`。若部署在已有的 S3/MinIO 服务上，将 `ATRI_OBJECT_STORAGE_PROVIDER=minio`，并设置 endpoint、访问密钥、bucket、region 与 TLS 选项即可。
 

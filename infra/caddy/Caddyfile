@@ -69,6 +69,28 @@
 		}
 	}
 
+	@avatarUpload {
+		path /api/v1/me/avatar
+		header Content-Type multipart/form-data*
+	}
+	handle @avatarUpload {
+		request_body {
+			max_size {$ATRI_AVATAR_MAX_SIZE:3MB}
+		}
+
+		reverse_proxy api:8080 {
+			lb_try_duration 5s
+			health_uri /api/v1/health
+			health_interval 30s
+			health_timeout 3s
+
+			transport http {
+				dial_timeout 3s
+				response_header_timeout 35s
+			}
+		}
+	}
+
 	handle @api {
 		request_body {
 			max_size 2MB
@@ -149,7 +171,7 @@
 	@legacyPlayableAsset path_regexp legacyPlayableAsset ^/playables/([a-z0-9]+(?:-[a-z0-9]+)*)/(.+)$
 	redir @legacyPlayableAsset /games/{re.legacyPlayableAsset.1}/play/{re.legacyPlayableAsset.2} 308
 
-	@managedAssets path /covers /covers/* /demos /demos/*
+	@managedAssets path /avatars /avatars/* /covers /covers/* /demos /demos/*
 	handle @managedAssets {
 		root * /assets
 		header Cache-Control "no-cache"

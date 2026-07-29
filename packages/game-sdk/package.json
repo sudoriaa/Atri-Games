@@ -14,9 +14,12 @@
     }
   },
   "scripts": {
-    "typecheck": "node --check src/index.js",
+    "typecheck": "node --check src/index.js && tsc --noEmit --strict --target ES2022 --module ESNext --moduleResolution Bundler types/usage.ts",
     "test": "node --test",
     "build": "node --check src/index.js"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
   },
   "engines": {
     "node": ">=22.12.0"

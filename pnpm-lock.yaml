@@ -84,7 +84,11 @@ importers:
 
   packages/game-kit: {}
 
-  packages/game-sdk: {}
+  packages/game-sdk:
+    devDependencies:
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
 
   packages/shared:
     devDependencies:

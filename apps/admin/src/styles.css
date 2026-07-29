@@ -1333,6 +1333,22 @@ img {
   font-weight: 900;
 }
 
+.user-cell > .user-avatar {
+  overflow: hidden;
+}
+
+.user-cell > .user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.user-cell__number {
+  color: #8077c3 !important;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-weight: 700;
+}
+
 .user-cell em {
   display: inline-flex;
   margin-left: 7px;
