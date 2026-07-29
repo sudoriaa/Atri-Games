@@ -12,6 +12,8 @@ type MemoryStorage = {
 
 type BootstrapWindow = {
   name: string;
+  innerWidth?: number;
+  innerHeight?: number;
   location: {
     hash: string;
     pathname: string;
@@ -27,19 +29,34 @@ type BootstrapWindow = {
   __ATRI_GAME_CONTEXT__?: Record<string, unknown>;
 };
 
-type FakeListener = (event: { key?: string; shiftKey?: boolean; target?: FakeElement; preventDefault: () => void }) => void;
+type FakeEvent = {
+  button?: number;
+  clientX?: number;
+  clientY?: number;
+  isPrimary?: boolean;
+  key?: string;
+  pointerId?: number;
+  shiftKey?: boolean;
+  target?: FakeElement;
+  preventDefault: () => void;
+};
+
+type FakeListener = (event: FakeEvent) => void;
 
 class FakeElement {
   readonly children: FakeElement[] = [];
   readonly attributes = new Map<string, string>();
   readonly listeners = new Map<string, FakeListener[]>();
+  readonly style: Record<string, string> = {};
   shadowRoot?: FakeElement;
   className = "";
+  capturedPointerId?: number;
   textContent = "";
   hidden = false;
   id = "";
   title = "";
   type = "";
+  private rect = { left: 764, top: 12, width: 248, height: 52 };
 
   constructor(readonly tagName: string, private readonly document: FakeDocument) {}
 
@@ -57,6 +74,10 @@ class FakeElement {
     this.attributes.set(name, value);
   }
 
+  removeAttribute(name: string) {
+    this.attributes.delete(name);
+  }
+
   getAttribute(name: string) {
     return this.attributes.get(name) ?? null;
   }
@@ -71,10 +92,39 @@ class FakeElement {
     this.document.activeElement = this;
   }
 
-  click() {
-    for (const listener of this.listeners.get("click") ?? []) {
-      listener({ target: this, preventDefault: () => {} });
+  setPointerCapture(pointerId: number) {
+    this.capturedPointerId = pointerId;
+  }
+
+  releasePointerCapture(pointerId: number) {
+    if (this.capturedPointerId === pointerId) this.capturedPointerId = undefined;
+  }
+
+  setBoundingClientRect(rect: Partial<{ left: number; top: number; width: number; height: number }>) {
+    this.rect = { ...this.rect, ...rect };
+  }
+
+  getBoundingClientRect() {
+    const left = this.style.left ? Number.parseFloat(this.style.left) : this.rect.left;
+    const top = this.style.top ? Number.parseFloat(this.style.top) : this.rect.top;
+    return {
+      left,
+      top,
+      width: this.rect.width,
+      height: this.rect.height,
+      right: left + this.rect.width,
+      bottom: top + this.rect.height,
+    };
+  }
+
+  dispatch(type: string, event: Omit<FakeEvent, "target" | "preventDefault"> = {}) {
+    for (const listener of this.listeners.get(type) ?? []) {
+      listener({ ...event, target: this, preventDefault: () => {} });
     }
+  }
+
+  click() {
+    this.dispatch("click");
   }
 }
 
@@ -154,6 +204,8 @@ function runBootstrapWithMenu() {
     CustomEvent: new (type: string, init: { detail: unknown }) => unknown;
   } = {
     name: "",
+    innerWidth: 1024,
+    innerHeight: 768,
     location: {
       hash: "",
       pathname: "/games/find-mzk/play/",
@@ -260,5 +312,49 @@ describe("Atri runtime bootstrap", () => {
 
     new Function("window", runtimeBootstrap)(window);
     expect(document.body.children.filter((element) => element.attributes.has("data-atri-platform-menu"))).toHaveLength(1);
+  });
+
+  it("keeps the menu subtle while idle and supports drag without toggling it", () => {
+    const { document } = runBootstrapWithMenu();
+    const host = findElement(document.body, (element) => element.attributes.has("data-atri-platform-menu"));
+    if (!host?.shadowRoot) throw new Error("platform menu shadow root was not created");
+
+    const trigger = findElement(host.shadowRoot, (element) => element.className === "atri-platform-menu__trigger");
+    const panel = findElement(host.shadowRoot, (element) => element.id === "atri-platform-menu-panel");
+    const head = findElement(host.shadowRoot, (element) => element.className === "atri-platform-menu__head");
+    if (!trigger || !panel || !head) throw new Error("platform menu controls were not created");
+
+    expect(runtimeBootstrap).toContain("opacity: .58");
+    expect(runtimeBootstrap).toContain(":host(:hover)");
+    expect(runtimeBootstrap).toContain("data-atri-dragging");
+
+    trigger.setBoundingClientRect({ left: 964, top: 12, width: 48, height: 48 });
+    trigger.dispatch("pointerdown", { button: 0, clientX: 988, clientY: 36, pointerId: 21 });
+    expect(trigger.capturedPointerId).toBe(21);
+    trigger.dispatch("pointermove", { clientX: 50, clientY: 36, pointerId: 21 });
+    expect(host.getAttribute("data-atri-dragging")).toBe("");
+    expect(host.getAttribute("data-atri-align")).toBe("start");
+    expect(host.style.left).toBe("26px");
+    expect(host.style.top).toBe("12px");
+    trigger.dispatch("pointerup", { clientX: 50, clientY: 36, pointerId: 21 });
+    expect(trigger.capturedPointerId).toBeUndefined();
+    expect(host.getAttribute("data-atri-dragging")).toBeNull();
+
+    trigger.click();
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    trigger.click();
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+
+    head.setBoundingClientRect({ left: 26, top: 68, width: 248, height: 52 });
+    panel.setBoundingClientRect({ left: 26, top: 68, width: 248, height: 250 });
+    head.dispatch("pointerdown", { button: 0, clientX: 150, clientY: 90, pointerId: 22 });
+    head.dispatch("pointermove", { clientX: 2000, clientY: 2000, pointerId: 22 });
+    expect(host.getAttribute("data-atri-dragging")).toBe("");
+    expect(host.getAttribute("data-atri-align")).toBe("end");
+    expect(host.style.left).toBe("768px");
+    expect(host.style.top).toBe("454px");
+    head.dispatch("pointerup", { clientX: 2000, clientY: 2000, pointerId: 22 });
+    expect(host.getAttribute("data-atri-dragging")).toBeNull();
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
   });
 });

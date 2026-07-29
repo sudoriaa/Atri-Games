@@ -11,11 +11,14 @@
   var PLATFORM_MENU_ATTRIBUTE = "data-atri-platform-menu";
   var PLATFORM_MENU_EVENT = "atri-platform-menu";
   var PLATFORM_MENU_CSS = [
-    ":host { position: fixed; inset-block-start: max(12px, env(safe-area-inset-top)); inset-inline-end: max(12px, env(safe-area-inset-right)); z-index: 2147483000; display: block; width: 248px; height: 52px; pointer-events: none; color: #171614; font: 500 13px/1.3 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }",
-    ".atri-platform-menu-host { position: fixed; top: 12px; right: 12px; z-index: 2147483000; display: block; width: 248px; height: 52px; pointer-events: none; color: #171614; font: 500 13px/1.3 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }",
+    ":host { position: fixed; inset-block-start: max(12px, env(safe-area-inset-top)); inset-inline-end: max(12px, env(safe-area-inset-right)); z-index: 2147483000; display: block; width: 248px; height: 52px; pointer-events: none; opacity: .58; color: #171614; font: 500 13px/1.3 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; transition: opacity .16s ease; }",
+    ".atri-platform-menu-host { position: fixed; top: 12px; right: 12px; z-index: 2147483000; display: block; width: 248px; height: 52px; pointer-events: none; opacity: .58; color: #171614; font: 500 13px/1.3 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; transition: opacity .16s ease; }",
+    ":host(:hover), :host(:focus-within), :host([data-atri-dragging]), .atri-platform-menu-host:hover, .atri-platform-menu-host:focus-within, .atri-platform-menu-host[data-atri-dragging] { opacity: 1; }",
     ".atri-platform-menu { position: relative; width: 100%; height: 100%; pointer-events: none; }",
     ".atri-platform-menu button { box-sizing: border-box; margin: 0; font: inherit; }",
-    ".atri-platform-menu__trigger { position: absolute; inset-block-start: 0; inset-inline-end: 0; z-index: 3; width: 48px; height: 48px; display: grid; place-items: center; padding: 0; border: 1px solid #171614; border-radius: 7px; color: #171614; background: #fbf9f3; box-shadow: 5px 5px 0 #171614; cursor: pointer; pointer-events: auto; transition: transform .16s ease, box-shadow .16s ease, background-color .16s ease; }",
+    ".atri-platform-menu__trigger { position: absolute; inset-block-start: 0; inset-inline-end: 0; z-index: 3; width: 48px; height: 48px; display: grid; place-items: center; padding: 0; border: 1px solid #171614; border-radius: 7px; color: #171614; background: #fbf9f3; box-shadow: 5px 5px 0 #171614; cursor: grab; pointer-events: auto; touch-action: none; user-select: none; transition: transform .16s ease, box-shadow .16s ease, background-color .16s ease; }",
+    ":host([data-atri-align='start']) .atri-platform-menu__trigger, .atri-platform-menu-host[data-atri-align='start'] .atri-platform-menu__trigger { inset-inline-start: 0; inset-inline-end: auto; }",
+    ":host([data-atri-dragging]) .atri-platform-menu__trigger, :host([data-atri-dragging]) .atri-platform-menu__head, .atri-platform-menu-host[data-atri-dragging] .atri-platform-menu__trigger, .atri-platform-menu-host[data-atri-dragging] .atri-platform-menu__head { cursor: grabbing; }",
     ".atri-platform-menu__trigger:hover { background: #ccff33; transform: translate(-1px, -1px); box-shadow: 6px 6px 0 #171614; }",
     ".atri-platform-menu__trigger[aria-expanded='true'] { background: #ccff33; transform: translate(-1px, -1px); box-shadow: 3px 3px 0 #171614; }",
     ".atri-platform-menu__trigger:focus-visible, .atri-platform-menu__item:focus-visible, .atri-platform-menu__close:focus-visible { outline: 3px solid #7d66ff; outline-offset: 3px; }",
@@ -25,11 +28,12 @@
     ".atri-platform-menu__backdrop { position: fixed; inset: 0; z-index: 1; background: rgba(23, 22, 20, .2); opacity: 0; pointer-events: none; transition: opacity .16s ease; }",
     ".atri-platform-menu.is-open .atri-platform-menu__backdrop { opacity: 1; pointer-events: auto; }",
     ".atri-platform-menu__panel { position: absolute; inset-block-start: 56px; inset-inline-end: 0; z-index: 2; width: 248px; overflow: hidden; border: 1px solid #171614; border-radius: 7px; background: #fbf9f3; box-shadow: 8px 8px 0 #171614; opacity: 0; pointer-events: none; transform: translateY(-7px) scale(.98); transform-origin: top right; transition: opacity .16s ease, transform .16s ease; }",
+    ":host([data-atri-align='start']) .atri-platform-menu__panel, .atri-platform-menu-host[data-atri-align='start'] .atri-platform-menu__panel { inset-inline-start: 0; inset-inline-end: auto; transform-origin: top left; }",
     ".atri-platform-menu.is-open .atri-platform-menu__panel { opacity: 1; pointer-events: auto; transform: none; }",
     ".atri-platform-menu [hidden] { display: none !important; }",
-    ".atri-platform-menu__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 10px 12px 10px 15px; border-bottom: 1px solid rgba(23, 22, 20, .17); }",
+    ".atri-platform-menu__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 10px 12px 10px 15px; border-bottom: 1px solid rgba(23, 22, 20, .17); cursor: grab; touch-action: none; user-select: none; }",
     ".atri-platform-menu__kicker { color: #716e67; font: 850 10px/1 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .12em; }",
-    ".atri-platform-menu__close { width: 30px; height: 30px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; color: #171614; background: transparent; font-size: 22px; line-height: 1; cursor: pointer; }",
+    ".atri-platform-menu__close { width: 30px; height: 30px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; color: #171614; background: transparent; font-size: 22px; line-height: 1; cursor: pointer; touch-action: auto; }",
     ".atri-platform-menu__close:hover { background: rgba(23, 22, 20, .08); }",
     ".atri-platform-menu__items { display: grid; gap: 4px; padding: 8px; }",
     ".atri-platform-menu__item { min-height: 46px; display: grid; grid-template-columns: 28px 1fr; align-items: center; gap: 9px; width: 100%; padding: 0 11px; border: 1px solid transparent; border-radius: 5px; color: #171614; background: transparent; text-align: start; cursor: pointer; }",
@@ -40,7 +44,7 @@
     ".atri-platform-menu__label { font-weight: 760; }",
     ".atri-platform-menu__status { min-height: 0; margin: 0; padding: 0 15px 11px; color: #716e67; font-size: 10px; line-height: 1.5; }",
     "@media (max-width: 560px) { :host, .atri-platform-menu-host { inset-block-start: max(8px, env(safe-area-inset-top)); inset-inline-end: max(8px, env(safe-area-inset-right)); top: 8px; right: 8px; width: min(280px, calc(100vw - 16px)); } .atri-platform-menu__panel { width: min(280px, calc(100vw - 16px)); } .atri-platform-menu__trigger { width: 46px; height: 46px; } }",
-    "@media (prefers-reduced-motion: reduce) { .atri-platform-menu__trigger, .atri-platform-menu__backdrop, .atri-platform-menu__panel { transition: none; } }",
+    "@media (prefers-reduced-motion: reduce) { :host, .atri-platform-menu-host, .atri-platform-menu__trigger, .atri-platform-menu__backdrop, .atri-platform-menu__panel { transition: none; } }",
   ].join("");
 
   function memoryStorage() {
@@ -319,6 +323,7 @@
       var host = document.createElement("div");
       host.className = "atri-platform-menu-host";
       host.setAttribute(PLATFORM_MENU_ATTRIBUTE, "");
+      host.setAttribute("data-atri-align", "end");
       host.setAttribute("aria-label", "Atri 平台菜单");
 
       var shadow = typeof host.attachShadow === "function" ? host.attachShadow({ mode: "open" }) : host;
@@ -387,6 +392,164 @@
       var open = false;
       var statusTimer = null;
       var focusables = [close, continueItem, fullscreenItem, restartItem, exitItem];
+      var dragState = null;
+      var suppressTriggerClickUntil = 0;
+      var DRAG_THRESHOLD = 5;
+      var DRAG_EDGE_INSET = 8;
+
+      var hasFiniteValue = function (value) {
+        return typeof value === "number" && isFinite(value);
+      };
+
+      var getElementRect = function (element) {
+        if (!element || typeof element.getBoundingClientRect !== "function") return null;
+        try {
+          var rect = element.getBoundingClientRect();
+          if (!rect || !hasFiniteValue(rect.left) || !hasFiniteValue(rect.top)) return null;
+          var width = hasFiniteValue(rect.width) ? rect.width : rect.right - rect.left;
+          var height = hasFiniteValue(rect.height) ? rect.height : rect.bottom - rect.top;
+          if (!hasFiniteValue(width) || !hasFiniteValue(height) || width <= 0 || height <= 0) return null;
+          return {
+            left: rect.left,
+            top: rect.top,
+            width: width,
+            height: height,
+            right: rect.left + width,
+            bottom: rect.top + height,
+          };
+        } catch (_error) {
+          return null;
+        }
+      };
+
+      var getPointerPoint = function (event) {
+        if (!event || !hasFiniteValue(event.clientX) || !hasFiniteValue(event.clientY)) return null;
+        return { x: event.clientX, y: event.clientY };
+      };
+
+      var currentTime = function () {
+        return typeof Date.now === "function" ? Date.now() : 0;
+      };
+
+      var setHostPosition = function (left, top, alignment) {
+        if (!host.style) return;
+        host.setAttribute("data-atri-align", alignment);
+        host.style.insetBlockStart = "auto";
+        host.style.insetBlockEnd = "auto";
+        host.style.insetInlineStart = "auto";
+        host.style.insetInlineEnd = "auto";
+        host.style.top = Math.round(top) + "px";
+        host.style.right = "auto";
+        host.style.bottom = "auto";
+        host.style.left = Math.round(left) + "px";
+      };
+
+      var clamp = function (value, minimum, maximum) {
+        return Math.max(minimum, Math.min(maximum, value));
+      };
+
+      var beginDrag = function (event, handle) {
+        if (!event || event.isPrimary === false || (hasFiniteValue(event.button) && event.button !== 0)) return;
+        var point = getPointerPoint(event);
+        var hostRect = getElementRect(host);
+        var handleRect = getElementRect(handle);
+        if (!point || !hostRect || !handleRect) return;
+
+        var panelRect = open ? getElementRect(panel) : null;
+        var width = hostRect.width;
+        var height = hostRect.height;
+        if (panelRect) {
+          width = Math.max(width, panelRect.right - hostRect.left);
+          height = Math.max(height, panelRect.bottom - hostRect.top);
+        }
+
+        dragState = {
+          pointerId: hasFiniteValue(event.pointerId) ? event.pointerId : 0,
+          startX: point.x,
+          startY: point.y,
+          startLeft: hostRect.left,
+          startTop: hostRect.top,
+          startHandleLeft: handleRect.left,
+          handleWidth: handleRect.width,
+          hostWidth: hostRect.width,
+          boundaryWidth: width,
+          height: height,
+          handle: handle,
+          isTrigger: handle === trigger,
+          dragging: false,
+        };
+        try {
+          if (hasFiniteValue(event.pointerId) && typeof handle.setPointerCapture === "function") handle.setPointerCapture(event.pointerId);
+        } catch (_error) {
+          // Pointer capture is a progressive enhancement; in-window dragging still works without it.
+        }
+      };
+
+      var moveDrag = function (event) {
+        if (!dragState || !event) return;
+        var pointerId = hasFiniteValue(event.pointerId) ? event.pointerId : 0;
+        if (pointerId !== dragState.pointerId) return;
+        var point = getPointerPoint(event);
+        if (!point) return;
+
+        var deltaX = point.x - dragState.startX;
+        var deltaY = point.y - dragState.startY;
+        if (!dragState.dragging) {
+          if (deltaX * deltaX + deltaY * deltaY < DRAG_THRESHOLD * DRAG_THRESHOLD) return;
+          dragState.dragging = true;
+          host.setAttribute("data-atri-dragging", "");
+        }
+        if (typeof event.preventDefault === "function") event.preventDefault();
+
+        var alignment = host.getAttribute("data-atri-align") === "start" ? "start" : "end";
+        var nextLeft = dragState.startLeft + deltaX;
+        var nextTop = dragState.startTop + deltaY;
+        var viewportWidth = window.innerWidth;
+        var viewportHeight = window.innerHeight;
+        if (hasFiniteValue(viewportWidth) && viewportWidth > 0) {
+          if (dragState.isTrigger) {
+            var nextTriggerLeft = dragState.startHandleLeft + deltaX;
+            alignment = nextTriggerLeft + dragState.handleWidth / 2 <= viewportWidth / 2 ? "start" : "end";
+            var triggerOffset = alignment === "start" ? 0 : Math.max(0, dragState.hostWidth - dragState.handleWidth);
+            nextLeft = nextTriggerLeft - triggerOffset;
+          } else {
+            alignment = nextLeft + dragState.hostWidth / 2 <= viewportWidth / 2 ? "start" : "end";
+          }
+          nextLeft = clamp(nextLeft, DRAG_EDGE_INSET, Math.max(DRAG_EDGE_INSET, viewportWidth - dragState.boundaryWidth - DRAG_EDGE_INSET));
+        }
+        if (hasFiniteValue(viewportHeight) && viewportHeight > 0) {
+          nextTop = clamp(nextTop, DRAG_EDGE_INSET, Math.max(DRAG_EDGE_INSET, viewportHeight - dragState.height - DRAG_EDGE_INSET));
+        }
+        setHostPosition(nextLeft, nextTop, alignment);
+      };
+
+      var clearDragState = function (event, handle, suppressClick) {
+        if (!dragState) return;
+        if (event && hasFiniteValue(event.pointerId) && event.pointerId !== dragState.pointerId) return;
+        if (handle && handle !== dragState.handle) return;
+        var activeDrag = dragState;
+        dragState = null;
+        try {
+          if (hasFiniteValue(activeDrag.pointerId) && typeof activeDrag.handle.releasePointerCapture === "function") activeDrag.handle.releasePointerCapture(activeDrag.pointerId);
+        } catch (_error) {
+          // A released or unavailable pointer capture has no effect on the menu.
+        }
+        if (!activeDrag.dragging) return;
+        host.removeAttribute("data-atri-dragging");
+        if (suppressClick && activeDrag.handle === trigger) suppressTriggerClickUntil = currentTime() + 450;
+        if (event && typeof event.preventDefault === "function") event.preventDefault();
+      };
+
+      var attachDragBehavior = function (handle, canStartDrag) {
+        handle.addEventListener("pointerdown", function (event) {
+          if (canStartDrag && !canStartDrag(event)) return;
+          beginDrag(event, handle);
+        });
+        handle.addEventListener("pointermove", moveDrag);
+        handle.addEventListener("pointerup", function (event) { clearDragState(event, handle, true); });
+        handle.addEventListener("pointercancel", function (event) { clearDragState(event, handle, false); });
+        handle.addEventListener("lostpointercapture", function (event) { clearDragState(event, handle, true); });
+      };
 
       var syncFullscreen = function () {
         var isFullscreen = false;
@@ -483,7 +646,17 @@
         }
       };
 
-      trigger.addEventListener("click", function () { setOpen(!open, true); });
+      attachDragBehavior(trigger);
+      attachDragBehavior(head, function (event) { return event.target !== close; });
+      trigger.addEventListener("click", function (event) {
+        if (suppressTriggerClickUntil > currentTime()) {
+          suppressTriggerClickUntil = 0;
+          event.preventDefault();
+          return;
+        }
+        suppressTriggerClickUntil = 0;
+        setOpen(!open, true);
+      });
       close.addEventListener("click", function () { setOpen(false, true); });
       continueItem.addEventListener("click", function () { setOpen(false, true); });
       fullscreenItem.addEventListener("click", toggleFullscreen);
@@ -517,6 +690,7 @@
           }
         });
         window.addEventListener("fullscreenchange", syncFullscreen);
+        window.addEventListener("blur", function () { clearDragState(null, null, false); });
       }
       syncFullscreen();
       document.body.appendChild(host);
