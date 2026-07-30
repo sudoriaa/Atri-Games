@@ -7,8 +7,8 @@ import { useAsync } from "../lib/use-async";
 
 export function HomePage() {
   const { api } = useAuth();
-  const featured = useAsync(() => api.games({ featured: true, pageSize: 3 }), [api]);
-  const latest = useAsync(() => api.games({ pageSize: 6 }), [api]);
+  const featured = useAsync(() => api.games({ featured: true, sort: "recommended", pageSize: 3 }), [api]);
+  const latest = useAsync(() => api.games({ sort: "newest", pageSize: 6 }), [api]);
   const categories = useAsync(() => api.categories(), [api]);
 
   return (

@@ -175,6 +175,67 @@ func TestGamesSortByLikes(t *testing.T) {
 	}
 }
 
+func TestGamesSortByPlays(t *testing.T) {
+	store := newTestStore(t)
+	if _, err := store.db.Exec(`UPDATE games SET play_count=10`); err != nil {
+		t.Fatalf("normalize play counts: %v", err)
+	}
+	if _, err := store.db.Exec(`UPDATE games SET play_count=99 WHERE id='game_orbit'`); err != nil {
+		t.Fatalf("mark most-played game: %v", err)
+	}
+
+	list, err := store.Games(GameFilter{Sort: "plays", Page: 1, PageSize: 24})
+	if err != nil {
+		t.Fatalf("Games: %v", err)
+	}
+	if len(list.Items) == 0 || list.Items[0].ID != "game_orbit" {
+		t.Fatalf("unexpected play ordering: %+v", list.Items)
+	}
+}
+
+func TestGamesSortNewestByDefault(t *testing.T) {
+	store := newTestStore(t)
+	if _, err := store.db.Exec(`UPDATE games SET published_at='2026-01-01T00:00:00Z',created_at='2026-01-01T00:00:00Z'`); err != nil {
+		t.Fatalf("normalize game dates: %v", err)
+	}
+	if _, err := store.db.Exec(`UPDATE games SET published_at='2026-02-01T00:00:00Z',created_at='2026-02-01T00:00:00Z' WHERE id='game_orbit'`); err != nil {
+		t.Fatalf("mark newest game: %v", err)
+	}
+
+	for _, sort := range []string{"", "newest"} {
+		list, err := store.Games(GameFilter{Sort: sort, Page: 1, PageSize: 24})
+		if err != nil {
+			t.Fatalf("Games(%q): %v", sort, err)
+		}
+		if len(list.Items) == 0 || list.Items[0].ID != "game_orbit" {
+			t.Fatalf("newest ordering for %q = %+v", sort, list.Items)
+		}
+	}
+
+	recommended, err := store.Games(GameFilter{Sort: "recommended", Page: 1, PageSize: 24})
+	if err != nil {
+		t.Fatalf("recommended Games: %v", err)
+	}
+	if len(recommended.Items) == 0 || recommended.Items[0].ID != "game_neon" {
+		t.Fatalf("recommended ordering = %+v", recommended.Items)
+	}
+
+	if _, err := store.db.Exec(`UPDATE games SET published_at='2026-03-01T00:00:00Z',created_at='2026-03-01T00:00:00Z'`); err != nil {
+		t.Fatalf("normalize tied game dates: %v", err)
+	}
+	var lastInsertedID string
+	if err := store.db.QueryRow(`SELECT id FROM games ORDER BY rowid DESC LIMIT 1`).Scan(&lastInsertedID); err != nil {
+		t.Fatalf("find last inserted game: %v", err)
+	}
+	tied, err := store.Games(GameFilter{Page: 1, PageSize: 24})
+	if err != nil {
+		t.Fatalf("tied Games: %v", err)
+	}
+	if len(tied.Items) == 0 || tied.Items[0].ID != lastInsertedID {
+		t.Fatalf("same-second newest ordering = %+v, want %s first", tied.Items, lastInsertedID)
+	}
+}
+
 func TestCommentThreadingRulesAndPermissions(t *testing.T) {
 	store, gameID, alice, bob := socialFixture(t)
 

@@ -9,7 +9,7 @@ export function DashboardPage() {
   const { api, user } = useAdminAuth();
   const metrics = useAsync(() => api.dashboard(), [api]);
   const activity = useAsync(() => api.adminActivity(), [api]);
-  const topGames = useAsync(() => api.adminGames({ status: "published", pageSize: 5 }), [api]);
+  const topGames = useAsync(() => api.adminGames({ status: "published", sort: "plays", pageSize: 5 }), [api]);
   const cards = metrics.data ? [
     { label: "活跃账户", value: metrics.data.users, icon: UsersRound, color: "violet" },
     { label: "已发布游戏", value: metrics.data.publishedGames, icon: Gamepad2, color: "lime" },
