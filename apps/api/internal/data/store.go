@@ -996,7 +996,7 @@ func (s *Store) Games(filter GameFilter) (GameList, error) {
 
 const gameSelect = `SELECT
 	g.id,g.slug,g.title,g.summary,g.description,g.author_name,g.cover_url,g.launch_url,g.launch_open_in,g.repository_url,
-	g.engine,g.version,g.status,g.owner_user_id,COALESCE(u.display_name,''),g.category_id,COALESCE(c.name,''),g.featured,g.network_required,g.own_backend,
+	g.engine,g.version,g.status,COALESCE(g.owner_user_id,''),COALESCE(u.display_name,''),g.category_id,COALESCE(c.name,''),g.featured,g.network_required,g.own_backend,
 	g.requires_login,g.platform_storage,g.matchmaking_enabled,
 	g.tags_json,g.play_count,(SELECT COUNT(*) FROM favorites f WHERE f.game_id=g.id),
 	CASE WHEN ?='' THEN 0 ELSE EXISTS(SELECT 1 FROM favorites uf WHERE uf.game_id=g.id AND uf.user_id=?) END,
