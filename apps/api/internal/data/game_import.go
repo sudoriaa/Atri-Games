@@ -57,7 +57,7 @@ type importStage struct {
 // filesystem swap and SQLite transaction are serialized with other game
 // lifecycle operations. A durable install manifest allows startup recovery
 // after a process interruption between the two sides of the change.
-func (s *Store) ImportGame(actorID string, packageData ImportedGame, assetRoot string, replace bool) (Game, error) {
+func (s *Store) ImportGame(actorID, ownerID string, packageData ImportedGame, assetRoot string, replace bool) (Game, error) {
 	s.gameMu.Lock()
 	defer s.gameMu.Unlock()
 
@@ -135,11 +135,11 @@ func (s *Store) ImportGame(actorID string, packageData ImportedGame, assetRoot s
 	tags, _ := json.Marshal(packageData.Input.Tags)
 	if existingID == "" {
 		_, err = tx.Exec(`INSERT INTO games(
-			id,slug,title,summary,description,author_name,cover_url,launch_url,launch_open_in,repository_url,engine,version,status,category_id,featured,network_required,own_backend,requires_login,platform_storage,matchmaking_enabled,tags_json,published_at
-		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CASE WHEN ?='published' THEN strftime('%Y-%m-%dT%H:%M:%SZ','now') ELSE NULL END)`,
+			id,slug,title,summary,description,author_name,cover_url,launch_url,launch_open_in,repository_url,engine,version,status,owner_user_id,category_id,featured,network_required,own_backend,requires_login,platform_storage,matchmaking_enabled,tags_json,published_at
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CASE WHEN ?='published' THEN strftime('%Y-%m-%dT%H:%M:%SZ','now') ELSE NULL END)`,
 			newID("game"), packageData.Input.Slug, packageData.Input.Title, packageData.Input.Summary,
 			packageData.Input.Description, packageData.Input.AuthorName, packageData.Input.CoverURL, packageData.Input.LaunchURL, packageData.Input.LaunchOpenIn,
-			packageData.Input.RepositoryURL, packageData.Input.Engine, packageData.Input.Version, packageData.Input.Status,
+			packageData.Input.RepositoryURL, packageData.Input.Engine, packageData.Input.Version, packageData.Input.Status, ownerID,
 			packageData.Input.CategoryID, packageData.Input.Featured, packageData.Input.NetworkRequired, packageData.Input.OwnBackend,
 			packageData.Input.RequiresLogin, packageData.Input.UsesPlatformStorage, packageData.Input.MatchmakingEnabled,
 			string(tags), packageData.Input.Status)

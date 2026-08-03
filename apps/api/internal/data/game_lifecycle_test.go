@@ -565,7 +565,7 @@ func TestMigrateAndSeedMovesLegacySeedLaunchURLsToOwnedWrappers(t *testing.T) {
 
 func createLifecycleGame(t *testing.T, store *Store, slug, coverURL, launchURL string) Game {
 	t.Helper()
-	game, err := store.CreateGame("usr_admin", lifecycleGameInput(slug, coverURL, launchURL))
+	game, err := store.CreateGame("usr_admin", "", lifecycleGameInput(slug, coverURL, launchURL))
 	if err != nil {
 		t.Fatalf("CreateGame %s: %v", slug, err)
 	}

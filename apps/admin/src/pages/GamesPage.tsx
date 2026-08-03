@@ -25,7 +25,7 @@ const statusLabels: Record<GameStatus, string> = { draft: "草稿", review: "待
 const emptyInput: GameInput = { slug: "", title: "", summary: "", description: "", authorName: "", coverUrl: "", launchUrl: "/demos/arcade/index.html", launchOpenIn: "same-tab", repositoryUrl: "", engine: "React", version: "0.1.0", status: "draft", categoryId: "", featured: false, networkRequired: false, ownBackend: false, requiresLogin: false, usesPlatformStorage: false, matchmakingEnabled: false, tags: [] };
 const maxCoverBytes = 10 * 1024 * 1024;
 const coverExtensions = new Set(["avif", "jpg", "jpeg", "png", "webp"]);
-type GameAction = "unpublish" | "delete";
+type GameAction = "approve" | "unpublish" | "delete";
 type Notice = { tone: "success" | "error"; text: string };
 
 export function GamesPage() {
@@ -49,6 +49,21 @@ export function GamesPage() {
     try {
       await api.unpublishGame(game.id);
       setNotice({ tone: "success", text: `${game.title} 已下架，数据和本地文件保持不变` });
+      games.reload();
+    } catch (error) {
+      setNotice({ tone: "error", text: apiErrorMessage(error) });
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const approve = async (game: Game) => {
+    if (!window.confirm(`确认通过审核并上架“${game.title}”？通过后游戏将公开出现在用户端首页与发现页。`)) return;
+    setPendingAction({ gameId: game.id, action: "approve" });
+    setNotice(null);
+    try {
+      await api.approveGame(game.id);
+      setNotice({ tone: "success", text: `${game.title} 已通过审核并上架` });
       games.reload();
     } catch (error) {
       setNotice({ tone: "error", text: apiErrorMessage(error) });
@@ -82,10 +97,11 @@ export function GamesPage() {
       {games.loading && <AdminLoading />}
       {games.error && <AdminError message={games.error} retry={games.reload} />}
       {games.data && <div className="admin-table-wrap"><table className="admin-table games-table"><thead><tr><th>游戏</th><th>分类 / 引擎</th><th>状态</th><th>启动 / 收藏</th><th>更新</th><th><span className="sr-only">操作</span></th></tr></thead><tbody>{games.data.items.map((game) => {
+        const approving = pendingAction?.gameId === game.id && pendingAction.action === "approve";
         const unpublishing = pendingAction?.gameId === game.id && pendingAction.action === "unpublish";
         const deleting = pendingAction?.gameId === game.id && pendingAction.action === "delete";
-        const busy = unpublishing || deleting;
-        return <tr key={game.id} className={busy ? "is-updating" : ""} aria-busy={busy || undefined}><td><div className="game-cell"><img src={game.coverUrl} alt="" loading="lazy" decoding="async" /><div><b>{game.title}</b><small>{game.authorName} · v{game.version}</small><span className="game-access-badges">{gameRequiresLogin(game) && <small className="access-badge">需登录</small>}{gameUsesPlatformStorage(game) && <small className="access-badge access-badge--muted">内置数据</small>}{gameUsesMatchmaking(game) && <small className="access-badge access-badge--muted">匹配</small>}</span></div></div></td><td><b>{game.categoryName}</b><small>{game.engine}{game.networkRequired ? " · 在线" : ""}</small></td><td><span className={`status-pill status-pill--${game.status}`}>{statusLabels[game.status]}</span>{game.featured && <small className="featured-text">精选</small>}</td><td><b>{game.playCount.toLocaleString()}</b><small>{game.favoriteCount.toLocaleString()} 收藏</small></td><td><time>{new Date(game.updatedAt).toLocaleDateString("zh-CN")}</time></td><td><div className="row-actions row-actions--games"><a href={game.launchUrl} target="_blank" rel="noreferrer" title={`打开 ${game.title}`} aria-label={`打开 ${game.title}`}><ExternalLink /></a><button type="button" onClick={() => setEditor(game)} title={`编辑 ${game.title}`} aria-label={`编辑 ${game.title}`} disabled={anyActionPending}><Edit3 /></button>{game.status === "published" && <button type="button" className="lifecycle-action unpublish-action" onClick={() => unpublish(game)} title="只从主页隐藏，保留全部数据和文件" aria-label={`下架 ${game.title}，保留全部数据和文件`} disabled={anyActionPending}><EyeOff /><span>{unpublishing ? "下架中…" : "下架"}</span></button>}<button type="button" className="lifecycle-action danger destructive-action" onClick={() => remove(game)} title="永久删除全部关联数据与对应本地文件" aria-label={`彻底删除 ${game.title}、关联数据与本地文件`} disabled={anyActionPending}><Trash2 /><span>{deleting ? "删除中…" : "删除"}</span></button></div></td></tr>;
+        const busy = approving || unpublishing || deleting;
+        return <tr key={game.id} className={busy ? "is-updating" : ""} aria-busy={busy || undefined}><td><div className="game-cell"><img src={game.coverUrl} alt="" loading="lazy" decoding="async" /><div><b>{game.title}</b><small>{game.authorName} · v{game.version}</small>{game.ownerName && game.ownerName !== game.authorName && <small className="owner-name">由 {game.ownerName} 上传</small>}<span className="game-access-badges">{gameRequiresLogin(game) && <small className="access-badge">需登录</small>}{gameUsesPlatformStorage(game) && <small className="access-badge access-badge--muted">内置数据</small>}{gameUsesMatchmaking(game) && <small className="access-badge access-badge--muted">匹配</small>}</span></div></div></td><td><b>{game.categoryName}</b><small>{game.engine}{game.networkRequired ? " · 在线" : ""}</small></td><td><span className={`status-pill status-pill--${game.status}`}>{statusLabels[game.status]}</span>{game.featured && <small className="featured-text">精选</small>}</td><td><b>{game.playCount.toLocaleString()}</b><small>{game.favoriteCount.toLocaleString()} 收藏</small></td><td><time>{new Date(game.updatedAt).toLocaleDateString("zh-CN")}</time></td><td><div className="row-actions row-actions--games"><a href={game.launchUrl} target="_blank" rel="noreferrer" title={`打开 ${game.title}`} aria-label={`打开 ${game.title}`}><ExternalLink /></a><button type="button" onClick={() => setEditor(game)} title={`编辑 ${game.title}`} aria-label={`编辑 ${game.title}`} disabled={anyActionPending}><Edit3 /></button>{game.status === "review" && <button type="button" className="lifecycle-action approve-action" onClick={() => approve(game)} title="通过审核，立即公开上架" aria-label={`通过审核并上架 ${game.title}`} disabled={anyActionPending}><CheckCircle2 /><span>{approving ? "审核中…" : "通过审核"}</span></button>}{game.status === "published" && <button type="button" className="lifecycle-action unpublish-action" onClick={() => unpublish(game)} title="只从主页隐藏，保留全部数据和文件" aria-label={`下架 ${game.title}，保留全部数据和文件`} disabled={anyActionPending}><EyeOff /><span>{unpublishing ? "下架中…" : "下架"}</span></button>}<button type="button" className="lifecycle-action danger destructive-action" onClick={() => remove(game)} title="永久删除全部关联数据与对应本地文件" aria-label={`彻底删除 ${game.title}、关联数据与本地文件`} disabled={anyActionPending}><Trash2 /><span>{deleting ? "删除中…" : "删除"}</span></button></div></td></tr>;
       })}</tbody></table>{games.data.items.length === 0 && <div className="panel-empty">没有匹配的游戏</div>}</div>}
       {editor && <GameEditor game={editor === "new" ? null : editor} categories={categories.data ?? []} close={() => setEditor(null)} saved={(title) => { setEditor(null); setNotice({ tone: "success", text: `${title} 已保存` }); games.reload(); }} />}
       {importerOpen && <GamePackageImporter categories={categories.data ?? []} close={() => setImporterOpen(false)} imported={(game) => { setImporterOpen(false); setNotice({ tone: "success", text: `${game.title} 的游戏包已接入，可在列表中继续管理` }); games.reload(); }} />}

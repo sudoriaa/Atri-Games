@@ -212,6 +212,7 @@ export function ProfilePage() {
           <div className="profile-stat"><Heart /><strong>{favorites.data?.length ?? 0}</strong><span>收藏的游戏</span></div>
           <div className="profile-stat"><CalendarDays /><strong>{new Date(user.createdAt).getFullYear()}</strong><span>加入年份</span></div>
           <Link className="text-link" to="/library">打开我的收藏 →</Link>
+          <Link className="text-link" to="/my-games">管理我的游戏 →</Link>
           {user.role === "admin" && <Link className="text-link admin-profile-link" to={adminConsoleUrl}><ShieldCheck size={15} /> 管理控制台 →</Link>}
         </aside>
       </div>

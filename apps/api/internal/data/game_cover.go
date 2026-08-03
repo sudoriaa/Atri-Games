@@ -94,7 +94,7 @@ func GameCoverUploadRoot(assetRoot string) (string, error) {
 // record under the same lifecycle lock used by imports and permanent deletion.
 // A receipt committed in the same SQLite transaction makes an ambiguous commit
 // distinguishable from an ordinary validation or constraint failure.
-func (s *Store) CreateGameWithCover(actorID string, input GameInput, upload GameCoverUpload, assetRoot string) (Game, error) {
+func (s *Store) CreateGameWithCover(actorID, ownerID string, input GameInput, upload GameCoverUpload, assetRoot string) (Game, error) {
 	s.gameMu.Lock()
 	defer s.gameMu.Unlock()
 
@@ -111,7 +111,7 @@ func (s *Store) CreateGameWithCover(actorID string, input GameInput, upload Game
 		TargetPath: stage.manifest.Target,
 		OldPath:    stage.manifest.OldTarget,
 	}
-	game, mutationErr := s.createGame(actorID, input, receipt)
+	game, mutationErr := s.createGame(actorID, ownerID, input, receipt)
 	return s.resolveGameCoverMutation(stage, game, mutationErr)
 }
 

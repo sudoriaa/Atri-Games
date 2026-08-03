@@ -68,6 +68,9 @@ export interface Game {
   engine: string;
   version: string;
   status: GameStatus;
+  /** The user who submitted this game for review. Admin-created games have no owner. */
+  ownerId?: string;
+  ownerName?: string;
   categoryId: string;
   categoryName: string;
   featured: boolean;
@@ -511,6 +514,44 @@ export class ApiClient {
 
   removeFavorite(gameId: string) {
     return this.request<void>(`/me/favorites/${encodeURIComponent(gameId)}`, { method: "DELETE" });
+  }
+
+  /** Lists the current user's own games across all statuses (draft/review/published/hidden). */
+  myGames(params: Record<string, string | number | boolean | undefined> = {}) {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== "") query.set(key, String(value));
+    });
+    const suffix = query.size ? `?${query.toString()}` : "";
+    return this.request<GameListResponse>(`/me/games${suffix}`);
+  }
+
+  /** Imports a .atri package into the current user's own catalog as a private draft. */
+  importMyGamePackage(file: Blob, categoryId: string) {
+    const body = new FormData();
+    body.append("package", file, typeof File !== "undefined" && file instanceof File ? file.name : "game.atri");
+    body.append("categoryId", categoryId);
+    return this.request<Game>("/me/games/import", { method: "POST", body });
+  }
+
+  /** Edits one of the current user's own games. Saving pushes it back through review. */
+  updateMyGame(id: string, input: GameInput, cover?: Blob) {
+    const body = cover ? gameMutationFormData(input, cover) : JSON.stringify(input);
+    return this.request<Game>(`/me/games/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body,
+    });
+  }
+
+  deleteMyGame(id: string) {
+    return this.request<void>(`/me/games/${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
+
+  /** Approves a submitted game so it appears on the public site. */
+  approveGame(id: string) {
+    return this.request<Game>(`/admin/games/${encodeURIComponent(id)}/approve`, {
+      method: "POST",
+    });
   }
 
   dashboard() {

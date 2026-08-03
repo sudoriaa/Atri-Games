@@ -10,7 +10,9 @@ const DiscoverPage = lazy(() => import("./pages/DiscoverPage").then((module) => 
 const GamePage = lazy(() => import("./pages/GamePage").then((module) => ({ default: module.GamePage })));
 const HomePage = lazy(() => import("./pages/HomePage").then((module) => ({ default: module.HomePage })));
 const LibraryPage = lazy(() => import("./pages/LibraryPage").then((module) => ({ default: module.LibraryPage })));
+const MyGamesPage = lazy(() => import("./pages/MyGamesPage").then((module) => ({ default: module.MyGamesPage })));
 const ProfilePage = lazy(() => import("./pages/ProfilePage").then((module) => ({ default: module.ProfilePage })));
+const UploadGamePage = lazy(() => import("./pages/UploadGamePage").then((module) => ({ default: module.UploadGamePage })));
 
 export function App() {
   return (
@@ -25,6 +27,8 @@ export function App() {
               navigations and rendering a 404 before Caddy can handle it. */}
           <Route path="games/:slug/play/*" element={null} />
           <Route path="library" element={<LibraryPage />} />
+          <Route path="my-games" element={<MyGamesPage />} />
+          <Route path="upload" element={<UploadGamePage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="developers" element={<DeveloperPromptPage />} />
           <Route path="*" element={<NotFoundPage />} />

@@ -34,6 +34,10 @@ type Game struct {
 	Engine          string `json:"engine"`
 	Version         string `json:"version"`
 	Status          string `json:"status"`
+	// OwnerID/OwnerName identify the user who submitted a game for review.
+	// Games created directly in the admin console have no owner.
+	OwnerID         string `json:"ownerId,omitempty"`
+	OwnerName       string `json:"ownerName,omitempty"`
 	CategoryID      string `json:"categoryId"`
 	CategoryName    string `json:"categoryName"`
 	Featured        bool   `json:"featured"`
@@ -126,6 +130,8 @@ type GameFilter struct {
 	PageSize   int
 	Admin      bool
 	UserID     string
+	// OwnerID restricts the listing to games submitted by one user.
+	OwnerID string
 }
 
 type GameList struct {

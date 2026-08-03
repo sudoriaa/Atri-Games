@@ -1296,6 +1296,16 @@ img {
   font-size: 9px;
 }
 
+.game-cell .owner-name {
+  width: fit-content;
+  max-width: 100%;
+  padding: 2px 7px;
+  border: 1px solid #d7d0fb;
+  border-radius: 99px;
+  color: var(--admin-violet);
+  background: #f6f4ff;
+}
+
 .game-access-badges {
   display: flex;
   flex-wrap: wrap;
@@ -1475,6 +1485,18 @@ img {
   color: #8c6227;
   border-color: #efd7ad;
   background: #fff8e8;
+}
+
+.row-actions--games button.approve-action {
+  color: #397650;
+  border-color: #cde6d4;
+  background: #edf8f0;
+}
+
+.row-actions--games button.approve-action:hover {
+  color: #2c5c3d;
+  border-color: #b5d8bf;
+  background: #e1f3e7;
 }
 
 .row-actions--games button.destructive-action {

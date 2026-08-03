@@ -6,7 +6,7 @@ import { useAuth } from "../lib/auth";
 import { useAsync } from "../lib/use-async";
 
 export function HomePage() {
-  const { api } = useAuth();
+  const { api, user } = useAuth();
   const featured = useAsync(() => api.games({ featured: true, sort: "recommended", pageSize: 3 }), [api]);
   const latest = useAsync(() => api.games({ sort: "newest", pageSize: 6 }), [api]);
   const categories = useAsync(() => api.categories(), [api]);
@@ -79,7 +79,10 @@ export function HomePage() {
         <div><p className="kicker">FOR AI GAME MAKERS</p><h2>把项目交给 AI。<br />拿回可导入的 .atri。</h2></div>
         <div>
           <p>任何技术栈、任何引擎、静态或联网。填写几项项目线索，复制完整提示词，让编程 AI 自动改造、构建、校验并打包。</p>
-          <Link className="button button--light" to="/developers">生成 AI 接入提示词 <ArrowRight size={17} /></Link>
+          <div className="developer-callout__actions">
+            <Link className="button button--light" to="/developers">生成 AI 接入提示词 <ArrowRight size={17} /></Link>
+            {user && <Link className="button button--ghost" to="/my-games">管理我的游戏 <ArrowRight size={17} /></Link>}
+          </div>
         </div>
       </section>
     </>

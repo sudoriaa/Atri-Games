@@ -21,6 +21,9 @@ var (
 	ErrLastAdmin         = errors.New("at least one active admin is required")
 	ErrGameAlreadyExists = errors.New("game already exists")
 	ErrAssetShared       = errors.New("managed asset is referenced by another game")
+	// ErrGameNotReviewable is returned when approving a game whose status is
+	// neither "review" nor already "published".
+	ErrGameNotReviewable = errors.New("game is not in a reviewable state")
 )
 
 const maxUserNumber int64 = 1<<63 - 1
@@ -118,6 +121,7 @@ func (s *Store) MigrateAndSeed(adminEmail, adminHash string) error {
 			engine TEXT NOT NULL,
 			version TEXT NOT NULL,
 			status TEXT NOT NULL CHECK(status IN ('draft', 'review', 'published', 'hidden')) DEFAULT 'draft',
+			owner_user_id TEXT,
 			category_id TEXT NOT NULL REFERENCES categories(id) ON UPDATE CASCADE ON DELETE RESTRICT,
 			featured INTEGER NOT NULL DEFAULT 0,
 			network_required INTEGER NOT NULL DEFAULT 0,
@@ -224,6 +228,7 @@ func (s *Store) MigrateAndSeed(adminEmail, adminHash string) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_games_status_category ON games(status, category_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_games_published ON games(featured DESC, play_count DESC, published_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_games_owner_user ON games(owner_user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_game_assets_path ON game_assets(path)`,
 		`CREATE INDEX IF NOT EXISTS idx_game_packages_token ON game_packages(receipt_token)`,
 		`CREATE INDEX IF NOT EXISTS idx_game_player_data_updated ON game_player_data(updated_at DESC)`,
@@ -249,6 +254,9 @@ func (s *Store) MigrateAndSeed(adminEmail, adminHash string) error {
 		return err
 	}
 	if err := ensurePlatformColumns(tx); err != nil {
+		return err
+	}
+	if err := ensureGameOwnerColumn(tx); err != nil {
 		return err
 	}
 	if err := backfillPlatformColumns(tx); err != nil {
@@ -521,6 +529,42 @@ func ensurePlatformColumns(tx *sql.Tx) error {
 		}
 	}
 	return nil
+}
+
+// ensureGameOwnerColumn upgrades databases created before user-submitted
+// games were supported. Ownership is enforced at the application layer, so the
+// column is added without a foreign key for portability across existing volumes.
+func ensureGameOwnerColumn(tx *sql.Tx) error {
+	rows, err := tx.Query(`PRAGMA table_info(games)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	var found bool
+	for rows.Next() {
+		var (
+			cid          int
+			name         string
+			columnType   string
+			notNull      int
+			defaultValue sql.NullString
+			primaryKey   int
+		)
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return err
+		}
+		if name == "owner_user_id" {
+			found = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if found {
+		return nil
+	}
+	_, err = tx.Exec(`ALTER TABLE games ADD COLUMN owner_user_id TEXT`)
+	return err
 }
 
 func backfillPlatformColumns(tx *sql.Tx) error {
@@ -902,6 +946,10 @@ func (s *Store) Games(filter GameFilter) (GameList, error) {
 		conditions = append(conditions, "g.featured=?")
 		args = append(args, *filter.Featured)
 	}
+	if filter.OwnerID != "" {
+		conditions = append(conditions, "g.owner_user_id=?")
+		args = append(args, filter.OwnerID)
+	}
 	where := ""
 	if len(conditions) > 0 {
 		where = " WHERE " + strings.Join(conditions, " AND ")
@@ -943,7 +991,7 @@ func (s *Store) Games(filter GameFilter) (GameList, error) {
 
 const gameSelect = `SELECT
 	g.id,g.slug,g.title,g.summary,g.description,g.author_name,g.cover_url,g.launch_url,g.launch_open_in,g.repository_url,
-	g.engine,g.version,g.status,g.category_id,COALESCE(c.name,''),g.featured,g.network_required,g.own_backend,
+	g.engine,g.version,g.status,g.owner_user_id,COALESCE(u.display_name,''),g.category_id,COALESCE(c.name,''),g.featured,g.network_required,g.own_backend,
 	g.requires_login,g.platform_storage,g.matchmaking_enabled,
 	g.tags_json,g.play_count,(SELECT COUNT(*) FROM favorites f WHERE f.game_id=g.id),
 	CASE WHEN ?='' THEN 0 ELSE EXISTS(SELECT 1 FROM favorites uf WHERE uf.game_id=g.id AND uf.user_id=?) END,
@@ -952,7 +1000,8 @@ const gameSelect = `SELECT
 	(SELECT COUNT(*) FROM game_comments cm WHERE cm.game_id=g.id AND cm.status='visible'),
 	(SELECT COUNT(*) FROM game_share_events sh WHERE sh.game_id=g.id),
 	g.created_at,g.updated_at,COALESCE(g.published_at,'')
-	FROM games g LEFT JOIN categories c ON c.id=g.category_id`
+	FROM games g LEFT JOIN categories c ON c.id=g.category_id
+	LEFT JOIN users u ON u.id=g.owner_user_id`
 
 func (s *Store) gameBy(column, value, userID string, publishedOnly bool) (Game, error) {
 	query := gameSelect + " WHERE g." + column + "=?"
@@ -971,13 +1020,22 @@ func (s *Store) GameByID(id, userID string) (Game, error) {
 	return s.gameBy("id", id, userID, false)
 }
 
+// GameOwnedBy returns a game only when its owner_user_id matches ownerID.
+// A mismatch yields ErrNotFound so a caller cannot probe whether a foreign
+// game exists by id.
+func (s *Store) GameOwnedBy(id, ownerID string) (Game, error) {
+	query := gameSelect + " WHERE g.id=? AND g.owner_user_id=?"
+	args := []any{ownerID, ownerID, ownerID, ownerID, id, ownerID}
+	return scanGame(s.db.QueryRow(query, args...))
+}
+
 func scanGame(row interface{ Scan(...any) error }) (Game, error) {
 	var game Game
 	var tags string
 	if err := row.Scan(
 		&game.ID, &game.Slug, &game.Title, &game.Summary, &game.Description, &game.AuthorName,
 		&game.CoverURL, &game.LaunchURL, &game.LaunchOpenIn, &game.RepositoryURL, &game.Engine, &game.Version, &game.Status,
-		&game.CategoryID, &game.CategoryName, &game.Featured, &game.NetworkRequired, &game.OwnBackend,
+		&game.OwnerID, &game.OwnerName, &game.CategoryID, &game.CategoryName, &game.Featured, &game.NetworkRequired, &game.OwnBackend,
 		&game.RequiresLogin, &game.UsesPlatformStorage, &game.MatchmakingEnabled,
 		&tags, &game.PlayCount, &game.FavoriteCount, &game.IsFavorite,
 		&game.LikeCount, &game.IsLiked, &game.CommentCount, &game.ShareCount,
@@ -997,14 +1055,14 @@ func scanGame(row interface{ Scan(...any) error }) (Game, error) {
 	return game, nil
 }
 
-func (s *Store) CreateGame(actorID string, input GameInput) (Game, error) {
+func (s *Store) CreateGame(actorID, ownerID string, input GameInput) (Game, error) {
 	s.gameMu.Lock()
 	defer s.gameMu.Unlock()
 
-	return s.createGame(actorID, input, nil)
+	return s.createGame(actorID, ownerID, input, nil)
 }
 
-func (s *Store) createGame(actorID string, input GameInput, coverReceipt *gameCoverReceipt) (Game, error) {
+func (s *Store) createGame(actorID, ownerID string, input GameInput, coverReceipt *gameCoverReceipt) (Game, error) {
 	id := newID("game")
 	if input.Tags == nil {
 		input.Tags = []string{}
@@ -1023,10 +1081,10 @@ func (s *Store) createGame(actorID string, input GameInput, coverReceipt *gameCo
 	}
 	defer tx.Rollback()
 	_, err = tx.Exec(`INSERT INTO games(
-		id,slug,title,summary,description,author_name,cover_url,launch_url,launch_open_in,repository_url,engine,version,status,category_id,featured,network_required,own_backend,requires_login,platform_storage,matchmaking_enabled,tags_json,published_at
-	) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CASE WHEN ?='now' THEN strftime('%Y-%m-%dT%H:%M:%SZ','now') ELSE NULL END)`,
+		id,slug,title,summary,description,author_name,cover_url,launch_url,launch_open_in,repository_url,engine,version,status,owner_user_id,category_id,featured,network_required,own_backend,requires_login,platform_storage,matchmaking_enabled,tags_json,published_at
+	) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CASE WHEN ?='now' THEN strftime('%Y-%m-%dT%H:%M:%SZ','now') ELSE NULL END)`,
 		id, input.Slug, input.Title, input.Summary, input.Description, input.AuthorName, input.CoverURL, input.LaunchURL, input.LaunchOpenIn,
-		input.RepositoryURL, input.Engine, input.Version, input.Status, input.CategoryID, input.Featured, input.NetworkRequired,
+		input.RepositoryURL, input.Engine, input.Version, input.Status, ownerID, input.CategoryID, input.Featured, input.NetworkRequired,
 		input.OwnBackend, input.RequiresLogin, input.UsesPlatformStorage, input.MatchmakingEnabled, string(tags), published)
 	if err != nil {
 		return Game{}, err

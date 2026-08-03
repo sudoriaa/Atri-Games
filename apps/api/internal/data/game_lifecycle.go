@@ -84,6 +84,47 @@ func (s *Store) UnpublishGame(actorID, id string) (Game, error) {
 	return s.GameByID(id, "")
 }
 
+// ApproveGame publishes a game that was submitted for review. Approving an
+// already-published game is idempotent; any other status is rejected with
+// ErrGameNotReviewable. A previously published game whose review cycle cleared
+// published_at gets a fresh publication timestamp.
+func (s *Store) ApproveGame(actorID, id string) (Game, error) {
+	s.gameMu.Lock()
+	defer s.gameMu.Unlock()
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return Game{}, err
+	}
+	defer tx.Rollback()
+
+	var status string
+	if err := tx.QueryRow(`SELECT status FROM games WHERE id=?`, id).Scan(&status); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Game{}, ErrNotFound
+		}
+		return Game{}, err
+	}
+	if status == "published" {
+		return s.GameByID(id, "")
+	}
+	if status != "review" {
+		return Game{}, ErrGameNotReviewable
+	}
+	if _, err := tx.Exec(`UPDATE games
+		SET status='published',published_at=COALESCE(published_at,strftime('%Y-%m-%dT%H:%M:%SZ','now')),updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now')
+		WHERE id=?`, id); err != nil {
+		return Game{}, err
+	}
+	if err := auditTx(tx, actorID, "game.approved", "game", id, "review -> published"); err != nil {
+		return Game{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Game{}, err
+	}
+	return s.GameByID(id, "")
+}
+
 // RecoverManagedAssets resolves interrupted game deletions. A manifest whose
 // game still exists is rolled back; a manifest whose game is gone is finalized.
 func (s *Store) RecoverManagedAssets(assetRoot string) error {

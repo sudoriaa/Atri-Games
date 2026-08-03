@@ -108,6 +108,13 @@ func NewWithObjectStore(cfg config.Config, store *data.Store, tokens *security.T
 	mux.Handle("POST /api/v1/me/favorites/{gameId}", server.requireUser(http.HandlerFunc(server.addFavorite)))
 	mux.Handle("DELETE /api/v1/me/favorites/{gameId}", server.requireUser(http.HandlerFunc(server.removeFavorite)))
 
+	mux.Handle("GET /api/v1/me/games", server.requireUser(http.HandlerFunc(server.myGames)))
+	mux.Handle("POST /api/v1/me/games/import", server.requireUser(server.limitGameRequests(server.gameWriteLimiter, http.HandlerFunc(server.importMyGame))))
+	mux.Handle("PUT /api/v1/me/games/{id}", server.requireUser(server.limitGameRequests(server.gameWriteLimiter, http.HandlerFunc(server.updateMyGame))))
+	mux.Handle("DELETE /api/v1/me/games/{id}", server.requireUser(server.limitGameRequests(server.gameWriteLimiter, http.HandlerFunc(server.deleteMyGame))))
+
+	mux.Handle("POST /api/v1/admin/games/{id}/approve", server.requireAdmin(http.HandlerFunc(server.approveGame)))
+
 	mux.Handle("GET /api/v1/admin/dashboard", server.requireAdmin(http.HandlerFunc(server.adminDashboard)))
 	mux.Handle("GET /api/v1/admin/activity", server.requireAdmin(http.HandlerFunc(server.adminActivity)))
 	mux.Handle("GET /api/v1/admin/games", server.requireAdmin(http.HandlerFunc(server.adminGames)))
@@ -630,9 +637,9 @@ func (s *Server) createGame(w http.ResponseWriter, r *http.Request) {
 	var game data.Game
 	var err error
 	if cover == nil {
-		game, err = s.store.CreateGame(currentUser(r).ID, input)
+		game, err = s.store.CreateGame(currentUser(r).ID, "", input)
 	} else {
-		game, err = s.store.CreateGameWithCover(currentUser(r).ID, input, cover.upload(), s.config.AssetRoot)
+		game, err = s.store.CreateGameWithCover(currentUser(r).ID, "", input, cover.upload(), s.config.AssetRoot)
 	}
 	if err != nil {
 		s.writeStoreError(w, r, err)
@@ -827,7 +834,7 @@ func (s *Server) importGame(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, err)
 		return
 	}
-	game, err := s.store.ImportGame(currentUser(r).ID, data.ImportedGame{
+	game, err := s.store.ImportGame(currentUser(r).ID, "", data.ImportedGame{
 		Input:        input,
 		Kind:         manifest.Runtime.Kind,
 		ManifestJSON: string(manifestRaw),
@@ -923,6 +930,302 @@ func (s *Server) unpublishGame(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreError(w, r, err)
 		return
 	}
+	writeJSON(w, http.StatusOK, game)
+}
+
+// myGames lists the current user's own games across every status. Public
+// "published-only" filtering is disabled because owners manage drafts, review
+// submissions, and hidden games from this endpoint.
+func (s *Server) myGames(w http.ResponseWriter, r *http.Request) {
+	filter := parseGameFilter(r, true)
+	filter.OwnerID = currentUser(r).ID
+	list, err := s.store.Games(filter)
+	if err != nil {
+		s.writeStoreError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+// importMyGame imports a .atri package into the current user's own catalog as
+// a private draft. The user then edits the parsed metadata in the shared
+// editor before submitting it for admin review.
+func (s *Server) importMyGame(w http.ResponseWriter, r *http.Request) {
+	user := currentUser(r)
+	maxBytes := s.config.GamePackageMaxBytes
+	if maxBytes <= 0 {
+		maxBytes = gamepkg.DefaultMaxArchive
+	}
+	// Same envelope sizing as the admin import: the archive limit applies to
+	// the decrypted ZIP, with bounded space for the multipart envelope and the
+	// authenticated encrypted-container header.
+	const (
+		multipartOverhead       = int64(1024 * 1024)
+		encryptedContainerSlack = int64(1024 * 1024)
+	)
+	maxUploadBytes := maxBytes + encryptedContainerSlack
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes+multipartOverhead)
+	reader, err := r.MultipartReader()
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_multipart", "请使用 multipart/form-data 上传 .atri 游戏包")
+		return
+	}
+	importsRoot := filepath.Join(s.config.AssetRoot, ".atri-imports")
+	if err := os.MkdirAll(importsRoot, 0o700); err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	archive, err := os.CreateTemp(importsRoot, "upload-*.atri")
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	archivePath := archive.Name()
+	defer os.Remove(archivePath)
+	defer archive.Close()
+
+	fields := map[string]string{}
+	var packageSeen bool
+	for {
+		part, nextErr := reader.NextPart()
+		if errors.Is(nextErr, io.EOF) {
+			break
+		}
+		if nextErr != nil {
+			writeError(w, http.StatusBadRequest, "invalid_package", "游戏包上传不完整")
+			return
+		}
+		name := part.FormName()
+		if name == "package" {
+			if packageSeen {
+				part.Close()
+				writeError(w, http.StatusBadRequest, "invalid_package", "一次只能上传一个游戏包")
+				return
+			}
+			packageSeen = true
+			written, copyErr := io.Copy(archive, io.LimitReader(part, maxUploadBytes+1))
+			closeErr := part.Close()
+			if copyErr != nil || closeErr != nil {
+				writeError(w, http.StatusBadRequest, "invalid_package", "游戏包上传不完整")
+				return
+			}
+			if written > maxUploadBytes {
+				writeError(w, http.StatusRequestEntityTooLarge, "package_too_large", "游戏包超过服务器配置的大小上限")
+				return
+			}
+			continue
+		}
+		if name == "categoryId" {
+			value, readErr := io.ReadAll(io.LimitReader(part, 4097))
+			part.Close()
+			if readErr != nil || len(value) > 4096 {
+				writeError(w, http.StatusBadRequest, "invalid_package_options", "游戏包选项无效")
+				return
+			}
+			fields[name] = strings.TrimSpace(string(value))
+			continue
+		}
+		part.Close()
+	}
+	if !packageSeen {
+		writeError(w, http.StatusBadRequest, "missing_package", "请选择 .atri 游戏包")
+		return
+	}
+	if err := archive.Sync(); err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	if err := archive.Close(); err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+
+	limits := gamepkg.Limits{
+		MaxArchiveBytes:  maxBytes,
+		MaxUnpackedBytes: s.config.GamePackageMaxUnpackedBytes,
+		MaxFiles:         s.config.GamePackageMaxFiles,
+	}
+	prepared, err := gamepkg.ExtractWithPrivateKey(archivePath, s.config.AssetRoot, limits, s.config.PackageDecryptionPrivateKey)
+	if err != nil {
+		s.writePackageImportError(w, err)
+		return
+	}
+	defer prepared.Cleanup()
+
+	categoryID := fields["categoryId"]
+	if !slugPattern.MatchString(categoryID) {
+		writeError(w, http.StatusUnprocessableEntity, "invalid_package_options", "请选择有效的游戏分类")
+		return
+	}
+	categoryExists, err := s.store.CategoryExists(categoryID)
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	if !categoryExists {
+		writeError(w, http.StatusUnprocessableEntity, "invalid_package_options", "所选游戏分类不存在")
+		return
+	}
+
+	manifest := prepared.Manifest
+	engine := manifest.Engine.Name
+	if manifest.Engine.Framework != "" && !strings.EqualFold(manifest.Engine.Framework, engine) {
+		engine += " / " + manifest.Engine.Framework
+	}
+	coverExtension := strings.ToLower(filepath.Ext(manifest.Media.Cover))
+	coverURL := "/covers/" + manifest.ID + "/cover" + coverExtension
+	launchURL := manifest.Runtime.URL
+	if manifest.Runtime.Kind == "static" {
+		entry := manifest.Runtime.Entry
+		if entry == "index.html" || entry == "" {
+			launchURL = "/games/" + manifest.ID + "/play/"
+		} else {
+			launchURL = "/games/" + manifest.ID + "/play/" + entry
+		}
+	}
+	hints := manifest.CapabilityHints()
+	input := data.GameInput{
+		Slug:                manifest.ID,
+		Title:               manifest.Title,
+		Summary:             manifest.Summary,
+		Description:         manifest.Description,
+		AuthorName:          manifest.Authors[0].Name,
+		CoverURL:            coverURL,
+		LaunchURL:           launchURL,
+		LaunchOpenIn:        manifest.Runtime.OpenIn,
+		RepositoryURL:       manifest.Repository,
+		Engine:              engine,
+		Version:             manifest.Version,
+		Status:              "draft",
+		CategoryID:          categoryID,
+		NetworkRequired:     boolValue(manifest.Services.NetworkRequired),
+		OwnBackend:          boolValue(manifest.Services.OwnBackend),
+		RequiresLogin:       hints.RequiresLogin,
+		UsesPlatformStorage: hints.UsesPlatformStorage,
+		MatchmakingEnabled:  hints.MatchmakingEnabled,
+		Tags:                manifest.Tags,
+	}
+	normalizeGameInput(&input)
+	if !validateGameInput(w, input) {
+		return
+	}
+
+	// Re-importing one of the user's own slugs overwrites the draft; a slug
+	// owned by anyone else is refused so users cannot clobber foreign games.
+	existing, existingErr := s.store.GameBySlug(input.Slug, "", false)
+	switch {
+	case existingErr == nil && existing.OwnerID != "" && existing.OwnerID != user.ID:
+		writeError(w, http.StatusConflict, "game_exists", "该游戏标识已存在，且不属于你")
+		return
+	case existingErr == nil && existing.OwnerID != "":
+		// The slug already belongs to this user: implicit replace.
+	case existingErr == nil:
+		// Admin-created (ownerless) games are treated as foreign so the user's
+		// upload area stays isolated from platform-managed titles.
+		writeError(w, http.StatusConflict, "game_exists", "该游戏标识已存在，且不属于你")
+		return
+	case !errors.Is(existingErr, data.ErrNotFound):
+		s.internalError(w, r, existingErr)
+		return
+	}
+	manifestRaw, err := os.ReadFile(prepared.ManifestPath)
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	game, err := s.store.ImportGame(user.ID, user.ID, data.ImportedGame{
+		Input:        input,
+		Kind:         manifest.Runtime.Kind,
+		ManifestJSON: string(manifestRaw),
+		CoverSource:  prepared.CoverPath,
+		BundleSource: prepared.BundlePath,
+	}, s.config.AssetRoot, existingErr == nil)
+	if err != nil {
+		s.writeStoreError(w, r, err)
+		return
+	}
+	s.syncGameObjects("covers/"+game.Slug, "playables/"+game.Slug, "demos/"+game.Slug)
+	writeJSON(w, http.StatusCreated, game)
+}
+
+// updateMyGame lets an owner edit their own game metadata. Saving always sends
+// the game back through review: status is forced to "review", which immediately
+// hides a previously published game until an admin re-approves it. The slug and
+// package-declared capabilities cannot be changed by the owner.
+func (s *Server) updateMyGame(w http.ResponseWriter, r *http.Request) {
+	user := currentUser(r)
+	id := r.PathValue("id")
+	current, err := s.store.GameOwnedBy(id, user.ID)
+	if err != nil {
+		s.writeStoreError(w, r, err)
+		return
+	}
+	input, cover, ok := s.decodeGameMutation(w, r)
+	if !ok {
+		return
+	}
+	defer cover.cleanup()
+	normalizeGameInput(&input)
+	if cover != nil && slugPattern.MatchString(input.Slug) {
+		coverURL, err := data.ManagedGameCoverURL(input.Slug, cover.digest, cover.extension)
+		if err != nil {
+			s.internalError(w, r, err)
+			return
+		}
+		input.CoverURL = coverURL
+	}
+	// The slug comes from the .atri manifest and cannot be reassigned; admin
+	// flags (featured/backend) must not be self-granted through an edit. Package
+	// capability booleans are re-read from the database inside updateGame.
+	input.Slug = current.Slug
+	input.Status = "review"
+	input.Featured = current.Featured
+	input.NetworkRequired = current.NetworkRequired
+	input.OwnBackend = current.OwnBackend
+	if !validateGameInput(w, input) {
+		return
+	}
+	var game data.Game
+	if cover == nil {
+		game, err = s.store.UpdateGameWithCoverCleanup(user.ID, id, input, s.config.AssetRoot)
+	} else {
+		game, err = s.store.UpdateGameWithCover(user.ID, id, input, cover.upload(), s.config.AssetRoot)
+	}
+	if err != nil {
+		s.writeStoreError(w, r, err)
+		return
+	}
+	s.syncGameObjects("covers/" + game.Slug)
+	writeJSON(w, http.StatusOK, game)
+}
+
+// deleteMyGame permanently deletes one of the current user's own games after
+// an ownership check. Foreign ids yield a 404 so existence is not leaked.
+func (s *Server) deleteMyGame(w http.ResponseWriter, r *http.Request) {
+	user := currentUser(r)
+	id := r.PathValue("id")
+	game, err := s.store.GameOwnedBy(id, user.ID)
+	if err != nil {
+		s.writeStoreError(w, r, err)
+		return
+	}
+	if err := s.store.DeleteGame(user.ID, id, s.config.AssetRoot); err != nil {
+		s.writeStoreError(w, r, err)
+		return
+	}
+	s.syncGameObjects("covers/"+game.Slug, "playables/"+game.Slug, "demos/"+game.Slug)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// approveGame publishes a game submitted for review. Approving an already
+// published game is idempotent; other statuses are rejected.
+func (s *Server) approveGame(w http.ResponseWriter, r *http.Request) {
+	game, err := s.store.ApproveGame(currentUser(r).ID, r.PathValue("id"))
+	if err != nil {
+		s.writeStoreError(w, r, err)
+		return
+	}
+	s.syncGameObjects("covers/"+game.Slug, "playables/"+game.Slug, "demos/"+game.Slug)
 	writeJSON(w, http.StatusOK, game)
 }
 
@@ -1268,6 +1571,8 @@ func (s *Server) writeStoreError(w http.ResponseWriter, r *http.Request, err err
 		writeError(w, http.StatusConflict, "platform_services_disabled", "该游戏未启用内置平台服务")
 	case errors.Is(err, data.ErrGameLoginRequired):
 		writeError(w, http.StatusUnauthorized, "authentication_required", "该游戏需要登录后才能使用此服务")
+	case errors.Is(err, data.ErrGameNotReviewable):
+		writeError(w, http.StatusConflict, "game_not_reviewable", "该游戏当前状态无法直接通过审核")
 	case errors.Is(err, data.ErrGameStorageDisabled):
 		writeError(w, http.StatusConflict, "storage_disabled", "该游戏未启用内置数据服务")
 	case errors.Is(err, data.ErrGameStorageQuota):

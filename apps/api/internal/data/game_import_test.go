@@ -25,7 +25,7 @@ func TestImportGameInstallsStaticPackageAtomically(t *testing.T) {
 		"/covers/import-fixture/cover.webp",
 		"/playables/import-fixture/index.html",
 	)
-	game, err := store.ImportGame("usr_admin", ImportedGame{
+	game, err := store.ImportGame("usr_admin", "", ImportedGame{
 		Input:        input,
 		Kind:         "static",
 		ManifestJSON: `{"schemaVersion":2,"id":"import-fixture"}`,
@@ -71,7 +71,7 @@ func TestImportGameReplacementRemovesOldBundle(t *testing.T) {
 	}
 	input := lifecycleGameInput("replacement", "/covers/replacement/cover.webp", "/playables/replacement/index.html")
 	input.Version = "2.0.0"
-	if _, err := store.ImportGame("usr_admin", ImportedGame{
+	if _, err := store.ImportGame("usr_admin", "", ImportedGame{
 		Input:        input,
 		Kind:         "static",
 		ManifestJSON: `{"schemaVersion":2,"id":"replacement","version":"2.0.0"}`,
@@ -87,7 +87,7 @@ func TestImportGameReplacementRemovesOldBundle(t *testing.T) {
 	externalCover := writeTestAsset(t, externalSource, "cover.webp")
 	externalInput := lifecycleGameInput("replacement", "/covers/replacement/cover.webp", "https://games.example.test/replacement")
 	externalInput.Version = "3.0.0"
-	if _, err := store.ImportGame("usr_admin", ImportedGame{
+	if _, err := store.ImportGame("usr_admin", "", ImportedGame{
 		Input:        externalInput,
 		Kind:         "external",
 		ManifestJSON: `{"schemaVersion":2,"id":"replacement","version":"3.0.0"}`,
@@ -115,7 +115,7 @@ func TestImportGameDatabaseFailureRestoresFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	input := lifecycleGameInput("import-failure", "/covers/import-failure/cover.webp", "/playables/import-failure/index.html")
-	if _, err := store.ImportGame("usr_admin", ImportedGame{
+	if _, err := store.ImportGame("usr_admin", "", ImportedGame{
 		Input:        input,
 		Kind:         "static",
 		ManifestJSON: `{}`,

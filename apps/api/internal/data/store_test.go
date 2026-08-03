@@ -126,7 +126,7 @@ func TestStoreCoreLifecycle(t *testing.T) {
 		Status:        "review",
 		CategoryID:    category.ID,
 	}
-	game, err := store.CreateGame(admin.ID, input)
+	game, err := store.CreateGame(admin.ID, "", input)
 	if err != nil {
 		t.Fatalf("CreateGame: %v", err)
 	}

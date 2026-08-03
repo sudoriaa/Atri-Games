@@ -1,4 +1,4 @@
-import { Compass, Heart, LogOut, Menu, Search, ShieldCheck, UserRound, X } from "lucide-react";
+import { Compass, Gamepad2, Heart, LogOut, Menu, Search, ShieldCheck, UserRound, X } from "lucide-react";
 import { useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
@@ -33,6 +33,11 @@ export function SiteLayout() {
           <NavLink to="/library" onClick={() => setMenuOpen(false)}>
             <Heart size={17} /> 我的收藏
           </NavLink>
+          {user && (
+            <NavLink to="/my-games" onClick={() => setMenuOpen(false)}>
+              <Gamepad2 size={17} /> 我的游戏
+            </NavLink>
+          )}
         </nav>
         <form className="header-search" onSubmit={submitSearch} role="search">
           <Search size={17} />
