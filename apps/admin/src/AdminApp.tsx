@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AdminLayout } from "./components/AdminLayout";
 import { useAdminAuth } from "./lib/auth";
 import { CategoriesPage } from "./pages/CategoriesPage";
@@ -10,7 +10,10 @@ import { UsersPage } from "./pages/UsersPage";
 
 function ProtectedAdmin() {
   const { user } = useAdminAuth();
-  return user?.role === "admin" ? <AdminLayout /> : <Navigate to="/login" replace />;
+  const location = useLocation();
+  if (user?.role === "admin") return <AdminLayout />;
+  // 未登录或会话无效时重定向到登录页，并把原目标路径带回，登录后回到该页。
+  return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
 }
 
 export function AdminApp() {

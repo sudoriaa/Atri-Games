@@ -1,8 +1,9 @@
-import { CalendarDays, Heart, Image, Link2, LogOut, Mail, Save, Trash2, Upload } from "lucide-react";
+import { CalendarDays, Heart, Image, Link2, LogOut, Mail, Save, ShieldCheck, Trash2, Upload } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { UserAvatar } from "../components/UserAvatar";
 import { useAuth } from "../lib/auth";
+import { adminConsoleUrl } from "../lib/admin-url";
 import { useAsync } from "../lib/use-async";
 
 const avatarFileTypes = new Set(["image/avif", "image/jpeg", "image/png", "image/webp"]);
@@ -211,6 +212,7 @@ export function ProfilePage() {
           <div className="profile-stat"><Heart /><strong>{favorites.data?.length ?? 0}</strong><span>收藏的游戏</span></div>
           <div className="profile-stat"><CalendarDays /><strong>{new Date(user.createdAt).getFullYear()}</strong><span>加入年份</span></div>
           <Link className="text-link" to="/library">打开我的收藏 →</Link>
+          {user.role === "admin" && <Link className="text-link admin-profile-link" to={adminConsoleUrl}><ShieldCheck size={15} /> 管理控制台 →</Link>}
         </aside>
       </div>
       <button className="danger-link" onClick={logout}><LogOut size={16} /> 退出当前账户</button>

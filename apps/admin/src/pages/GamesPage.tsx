@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AdminError, AdminLoading } from "../components/AdminState";
+import { apiErrorMessage } from "../lib/api-error-message";
 import { gameDeleteConfirmations, parseTagInput } from "../lib/admin-utils";
 import { useAdminAuth } from "../lib/auth";
 import { useAsync } from "../lib/use-async";
@@ -50,7 +51,7 @@ export function GamesPage() {
       setNotice({ tone: "success", text: `${game.title} 已下架，数据和本地文件保持不变` });
       games.reload();
     } catch (error) {
-      setNotice({ tone: "error", text: error instanceof Error ? error.message : "下架失败" });
+      setNotice({ tone: "error", text: apiErrorMessage(error) });
     } finally {
       setPendingAction(null);
     }
@@ -66,7 +67,7 @@ export function GamesPage() {
       setNotice({ tone: "success", text: `${game.title} 的全部关联数据与本地文件已删除` });
       games.reload();
     } catch (error) {
-      setNotice({ tone: "error", text: error instanceof Error ? error.message : "彻底删除失败" });
+      setNotice({ tone: "error", text: apiErrorMessage(error) });
     } finally {
       setPendingAction(null);
     }
@@ -140,7 +141,7 @@ function GameEditor({ game, categories, close, saved }: { game: Game | null; cat
     setError("");
     const input = { ...form, tags: parseTagInput(tagText) };
     try { if (game) await api.updateGame(game.id, input, coverFile ?? undefined); else await api.createGame(input, coverFile ?? undefined); saved(input.title); }
-    catch (caught) { setError(caught instanceof Error ? caught.message : "保存失败"); setBusy(false); }
+    catch (caught) { setError(apiErrorMessage(caught)); setBusy(false); }
   };
 
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (!busy && event.target === event.currentTarget) close(); }}><section className="admin-modal" role="dialog" aria-modal="true" aria-labelledby="game-editor-title"><header><div><p className="admin-kicker">{game ? "EDIT RECORD" : "NEW RECORD"}</p><h2 id="game-editor-title">{game ? `编辑 ${game.title}` : "收录新游戏"}</h2></div><button type="button" onClick={close} disabled={busy} aria-label="关闭"><X /></button></header><form onSubmit={submit}>
@@ -194,7 +195,7 @@ function GamePackageImporter({ categories, close, imported }: { categories: Cate
     try {
       imported(await api.importGamePackage(file, { categoryId, status, replace }));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "游戏包导入失败");
+      setError(apiErrorMessage(caught));
       setBusy(false);
     }
   };

@@ -270,6 +270,25 @@ interface ApiErrorBody {
   };
 }
 
+/**
+ * 响应体不是 JSON（例如反向代理返回的 HTML 错误页、请求体超限等）时的
+ * 兜底文案，按 HTTP 状态给出具体原因，避免落到泛化的“请求没有完成”。
+ */
+const statusFallbackMessages: Record<number, string> = {
+  400: "请求无效，请检查填写内容",
+  401: "登录已过期，请重新登录",
+  403: "没有权限执行此操作",
+  404: "请求的资源不存在",
+  413: "上传内容超过大小限制",
+  429: "操作太频繁，请稍后再试",
+  502: "服务暂时不可用，请稍后重试",
+  504: "服务响应超时，请稍后重试",
+};
+
+function fallbackErrorMessage(status: number): string {
+  return statusFallbackMessages[status] ?? `请求没有完成（HTTP ${status}）`;
+}
+
 export class ApiClient {
   constructor(
     private readonly baseUrl = "/api/v1",
@@ -284,11 +303,22 @@ export class ApiClient {
       headers.set("Content-Type", "application/json");
     }
 
-    const response = await fetch(`${this.baseUrl}${path}`, { ...init, headers });
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${path}`, { ...init, headers });
+    } catch (error) {
+      // fetch 只在网络层失败时抛错（断网、服务不可达、跨域等）；
+      // 服务端错误会通过 HTTP 状态返回，不会走到这里。
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new ApiError("请求已取消", 0, "request_aborted");
+      }
+      throw new ApiError("网络连接失败，请检查网络后重试", 0, "network_error");
+    }
+
     if (!response.ok) {
       const body = (await response.json().catch(() => ({}))) as ApiErrorBody;
       throw new ApiError(
-        body.error?.message ?? "请求没有完成，请稍后重试",
+        body.error?.message ?? fallbackErrorMessage(response.status),
         response.status,
         body.error?.code ?? "request_failed",
       );

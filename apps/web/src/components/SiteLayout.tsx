@@ -1,7 +1,8 @@
-import { Compass, Heart, LogOut, Menu, Search, UserRound, X } from "lucide-react";
+import { Compass, Heart, LogOut, Menu, Search, ShieldCheck, UserRound, X } from "lucide-react";
 import { useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
+import { adminConsoleUrl } from "../lib/admin-url";
 import { Brand } from "./Brand";
 import { UserAvatar } from "./UserAvatar";
 
@@ -41,6 +42,11 @@ export function SiteLayout() {
         <div className="header-account">
           {user ? (
             <>
+              {user.role === "admin" && (
+                <Link className="admin-entry" to={adminConsoleUrl} title="进入管理控制台">
+                  <ShieldCheck size={16} /><span>管理端</span>
+                </Link>
+              )}
               <Link className="account-chip" to="/profile">
                 <UserAvatar className="avatar" name={user.displayName} src={user.avatarUrl} decorative />
                 <span><small>欢迎回来</small>{user.displayName}</span>

@@ -1,11 +1,12 @@
 import { ArrowRight, KeyRound, Mail, ShieldCheck } from "lucide-react";
 import { useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAdminAuth } from "../lib/auth";
 
 export function LoginPage() {
   const { user, login } = useAdminAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -14,7 +15,12 @@ export function LoginPage() {
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault(); setBusy(true); setError("");
-    try { await login(email, password); navigate("/"); }
+    try {
+      await login(email, password);
+      // 路由守卫把原始目标路径放在 location.state.from，登录后回到那里。
+      const state = location.state as { from?: string } | null;
+      navigate(state?.from && state.from.startsWith("/") ? state.from : "/", { replace: true });
+    }
     catch (caught) { setError(caught instanceof Error ? caught.message : "登录失败"); }
     finally { setBusy(false); }
   };
