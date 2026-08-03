@@ -228,7 +228,6 @@ func (s *Store) MigrateAndSeed(adminEmail, adminHash string) error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_games_status_category ON games(status, category_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_games_published ON games(featured DESC, play_count DESC, published_at DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_games_owner_user ON games(owner_user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_game_assets_path ON game_assets(path)`,
 		`CREATE INDEX IF NOT EXISTS idx_game_packages_token ON game_packages(receipt_token)`,
 		`CREATE INDEX IF NOT EXISTS idx_game_player_data_updated ON game_player_data(updated_at DESC)`,
@@ -257,6 +256,12 @@ func (s *Store) MigrateAndSeed(adminEmail, adminHash string) error {
 		return err
 	}
 	if err := ensureGameOwnerColumn(tx); err != nil {
+		return err
+	}
+	// The owner index must be created after the column is guaranteed to exist
+	// (ensureGameOwnerColumn), because on pre-existing databases the ALTER TABLE
+	// runs during migration and the CREATE INDEX would otherwise fail.
+	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_games_owner_user ON games(owner_user_id)`); err != nil {
 		return err
 	}
 	if err := backfillPlatformColumns(tx); err != nil {
