@@ -25,6 +25,7 @@ const statusLabels: Record<GameStatus, string> = { draft: "草稿", review: "待
 const emptyInput: GameInput = { slug: "", title: "", summary: "", description: "", authorName: "", coverUrl: "", launchUrl: "/demos/arcade/index.html", launchOpenIn: "same-tab", repositoryUrl: "", engine: "React", version: "0.1.0", status: "draft", categoryId: "", featured: false, networkRequired: false, ownBackend: false, requiresLogin: false, usesPlatformStorage: false, matchmakingEnabled: false, tags: [] };
 const maxCoverBytes = 10 * 1024 * 1024;
 const coverExtensions = new Set(["avif", "jpg", "jpeg", "png", "webp"]);
+const packageExtensions = new Set(["atri", "zip"]);
 type GameAction = "approve" | "unpublish" | "delete";
 type Notice = { tone: "success" | "error"; text: string };
 
@@ -194,11 +195,24 @@ function GameEditor({ game, categories, close, saved }: { game: Game | null; cat
 function GamePackageImporter({ categories, close, imported }: { categories: Category[]; close: () => void; imported: (game: Game) => void }) {
   const { api } = useAdminAuth();
   const [file, setFile] = useState<File | null>(null);
+  const [draggingPackage, setDraggingPackage] = useState(false);
   const [categoryId, setCategoryId] = useState(categories[0]?.id ?? "");
   const [status, setStatus] = useState<GameStatus>("review");
   const [replace, setReplace] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  const selectPackage = (candidate: File | null) => {
+    if (busy || !candidate) return;
+    const extension = candidate.name.split(".").pop()?.toLowerCase() ?? "";
+    if (!packageExtensions.has(extension)) {
+      setFile(null);
+      setError("请选择 .atri 或 .zip 游戏包");
+      return;
+    }
+    setFile(candidate);
+    setError("");
+  };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -219,7 +233,19 @@ function GamePackageImporter({ categories, close, imported }: { categories: Cate
   return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (!busy && event.target === event.currentTarget) close(); }}><section className="admin-modal package-import-modal" role="dialog" aria-modal="true" aria-labelledby="package-import-title"><header><div><p className="admin-kicker">UNIVERSAL GAME PACKAGE</p><h2 id="package-import-title">导入 .atri 游戏包</h2></div><button type="button" onClick={close} disabled={busy} aria-label="关闭"><X /></button></header><form onSubmit={submit}>
     <div className="import-help-grid"><article><b>静态构建</b><p>适用于 Unity Web、Godot Web、WebAssembly、Canvas、React、Vue 等浏览器产物。包内放入 <code>game/</code>。</p></article><article><b>独立后端</b><p>适用于任意服务端语言和架构。清单填写已部署的 HTTPS 地址，平台只保存入口和展示资源。</p></article></div>
     <a className="package-prompt-link" href="/developers#prompt-builder" target="_blank" rel="noreferrer"><span><b>还没有 .atri？</b><small>生成详细提示词，让编程 AI 直接完成项目适配、校验和打包。</small></span><ExternalLink /></a>
-    <label className="package-file-field"><span>游戏包 *</span><input type="file" required accept=".atri,.zip,application/zip" onChange={(event) => setFile(event.target.files?.[0] ?? null)} disabled={busy} /><small>{file ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(2)} MB` : "使用 @atri/game-kit 校验并打包；上传过程不会把整个文件读入服务器内存。"}</small></label>
+    <label
+      className={`package-file-field${draggingPackage ? " is-dragging" : ""}${busy ? " is-disabled" : ""}`}
+      onDragEnter={(event) => { event.preventDefault(); if (!busy) setDraggingPackage(true); }}
+      onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = busy ? "none" : "copy"; }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDraggingPackage(false);
+      }}
+      onDrop={(event) => { event.preventDefault(); setDraggingPackage(false); if (!busy) selectPackage(event.dataTransfer.files?.[0] ?? null); }}
+    >
+      <PackagePlus aria-hidden="true" />
+      <span><b>{file ? "已选择游戏包" : "选择或拖入游戏包"}</b><small>{file ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(2)} MB` : ".atri / .zip · 使用 @atri/game-kit 校验并打包"}</small></span>
+      <input type="file" accept=".atri,.zip,application/zip" onChange={(event) => { selectPackage(event.target.files?.[0] ?? null); event.currentTarget.value = ""; }} disabled={busy} />
+    </label>
     <div className="form-grid package-options"><label><span>所属分类 *</span><select required value={categoryId} onChange={(event) => setCategoryId(event.target.value)} disabled={busy}><option value="">请选择</option>{categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label><label><span>导入后状态 *</span><select value={status} onChange={(event) => setStatus(event.target.value as GameStatus)} disabled={busy}>{Object.entries(statusLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label></div>
     <label className="package-replace"><input type="checkbox" checked={replace} onChange={(event) => setReplace(event.target.checked)} disabled={busy} /><span><b>覆盖同 ID 的已有版本</b><small>仅在确认清单 ID 正确时启用；文件与数据库更新会作为同一次安装处理。</small></span></label>
     {error && <div className="admin-form-error" role="alert">{error}</div>}<footer><button type="button" className="secondary-action" onClick={close} disabled={busy}>取消</button><button type="submit" className="primary-action primary-action--compact" disabled={busy || !file || !categoryId}><PackagePlus />{busy ? "正在校验并安装…" : "校验并导入"}</button></footer>

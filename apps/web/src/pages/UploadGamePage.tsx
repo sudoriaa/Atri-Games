@@ -7,15 +7,30 @@ import { ErrorState } from "../components/PageState";
 import { useAuth } from "../lib/auth";
 import { useAsync } from "../lib/use-async";
 
+const packageExtensions = new Set(["atri", "zip"]);
+
 export function UploadGamePage() {
   const { api, user } = useAuth();
   const categories = useAsync(() => api.categories(), [api]);
   const navigate = useNavigate();
   const [file, setFile] = useState<File | null>(null);
+  const [draggingPackage, setDraggingPackage] = useState(false);
   const [categoryId, setCategoryId] = useState("");
   const [draft, setDraft] = useState<Game | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  const selectPackage = (candidate: File | null) => {
+    if (busy || !candidate) return;
+    const extension = candidate.name.split(".").pop()?.toLowerCase() ?? "";
+    if (!packageExtensions.has(extension)) {
+      setFile(null);
+      setError("请选择 .atri 或 .zip 游戏包");
+      return;
+    }
+    setFile(candidate);
+    setError("");
+  };
 
   if (!user) return <Navigate to="/auth?next=/upload" replace />;
 
@@ -73,16 +88,24 @@ export function UploadGamePage() {
             <div><b>02</b><span>核对信息</span></div>
             <div><b>03</b><span>等待审核</span></div>
           </div>
-          <label className="package-file-field">
-            <span>游戏包（.atri）*</span>
+          <label
+            className={`package-file-field${draggingPackage ? " is-dragging" : ""}${busy ? " is-disabled" : ""}`}
+            onDragEnter={(event) => { event.preventDefault(); if (!busy) setDraggingPackage(true); }}
+            onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = busy ? "none" : "copy"; }}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDraggingPackage(false);
+            }}
+            onDrop={(event) => { event.preventDefault(); setDraggingPackage(false); if (!busy) selectPackage(event.dataTransfer.files?.[0] ?? null); }}
+          >
+            <UploadCloud aria-hidden="true" />
+            <strong>{file ? "已选择游戏包" : "选择或拖入游戏包"}</strong>
             <input
               type="file"
-              required
               accept=".atri,.zip,application/zip"
-              onChange={(event) => { setFile(event.target.files?.[0] ?? null); setError(""); }}
+              onChange={(event) => { selectPackage(event.target.files?.[0] ?? null); event.currentTarget.value = ""; }}
               disabled={busy}
             />
-            <small>{file ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(2)} MB` : "使用 @atri/game-kit 校验并打包；上传过程不会把整个文件读入服务器内存。"}</small>
+            <small>{file ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(2)} MB` : ".atri / .zip · 使用 @atri/game-kit 校验并打包"}</small>
           </label>
           <label>
             <span>所属分类 *</span>
