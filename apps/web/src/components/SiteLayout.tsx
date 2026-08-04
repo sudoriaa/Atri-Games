@@ -1,15 +1,23 @@
-import { Compass, Gamepad2, Heart, LogOut, Menu, Search, UserRound, X } from "lucide-react";
-import { useState } from "react";
+import { Activity, Bell, Compass, Gamepad2, Heart, LogOut, Menu, Search, UserRound, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
+import { useAsync } from "../lib/use-async";
 import { Brand } from "./Brand";
 import { UserAvatar } from "./UserAvatar";
 
 export function SiteLayout() {
-  const { user, logout } = useAuth();
+  const { api, user, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [search, setSearch] = useState("");
   const navigate = useNavigate();
+  const notifications = useAsync(() => user ? api.notifications(10) : Promise.resolve({ items: [], unreadCount: 0 }), [api, user]);
+
+  useEffect(() => {
+    const refresh = () => notifications.reload();
+    window.addEventListener("atri:notifications-changed", refresh);
+    return () => window.removeEventListener("atri:notifications-changed", refresh);
+  }, [notifications.reload]);
 
   const submitSearch = (event: React.FormEvent) => {
     event.preventDefault();
@@ -33,9 +41,17 @@ export function SiteLayout() {
             <Heart size={17} /> 我的收藏
           </NavLink>
           {user && (
-            <NavLink to="/my-games" onClick={() => setMenuOpen(false)}>
-              <Gamepad2 size={17} /> 我的游戏
-            </NavLink>
+            <>
+              <NavLink to="/feed" onClick={() => setMenuOpen(false)}>
+                <Activity size={17} /> 关注动态
+              </NavLink>
+              <NavLink className="notification-nav" to="/notifications" onClick={() => setMenuOpen(false)}>
+                <Bell size={17} /> 通知{Boolean(notifications.data?.unreadCount) && ` (${notifications.data?.unreadCount})`}
+              </NavLink>
+              <NavLink to="/my-games" onClick={() => setMenuOpen(false)}>
+                <Gamepad2 size={17} /> 我的游戏
+              </NavLink>
+            </>
           )}
         </nav>
         <form className="header-search" onSubmit={submitSearch} role="search">
@@ -46,6 +62,9 @@ export function SiteLayout() {
         <div className="header-account">
           {user ? (
             <>
+              <Link className="icon-button notification-button" to="/notifications" aria-label={`通知中心，${notifications.data?.unreadCount ?? 0} 条未读`}>
+                <Bell size={18} />{Boolean(notifications.data?.unreadCount) && <span>{Math.min(99, notifications.data!.unreadCount)}</span>}
+              </Link>
               <Link className="account-chip" to="/profile">
                 <UserAvatar className="avatar" name={user.displayName} src={user.avatarUrl} decorative />
                 <span><small>欢迎回来</small>{user.displayName}</span>
@@ -68,6 +87,7 @@ export function SiteLayout() {
         <div className="footer-links">
           <Link to="/discover">浏览游戏</Link>
           <Link to="/developers">AI 接入提示词</Link>
+          <Link to="/safety">社区治理</Link>
           <a href="https://github.com/sudoriaa/Atri-Games/blob/main/docs/GAME_INTEGRATION.md" rel="noreferrer" target="_blank">完整文档</a>
           <a href="mailto:hello@atri.games">联系我们</a>
           <a href="https://github.com/sudoriaa/Atri-Games" rel="noreferrer" target="_blank" title="GitHub 开源仓库"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .7a11.3 11.3 0 0 0-3.6 22c.6.1.8-.2.8-.5v-2.2c-3.3.7-4-1.4-4-1.4-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-6a4.7 4.7 0 0 1 1.2-3.2c-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.4 11.4 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8.1 3.1a4.7 4.7 0 0 1 1.2 3.2c0 4.7-2.9 5.7-5.6 6 .4.3.8 1 .8 2v3c0 .3.2.6.8.5A11.3 11.3 0 0 0 12 .7Z" /></svg> 开源仓库</a>

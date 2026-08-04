@@ -41,9 +41,35 @@ export interface User {
   email: string;
   displayName: string;
   avatarUrl: string;
+  bio?: string;
+  websiteUrl?: string;
   role: UserRole;
   status: UserStatus;
   createdAt: string;
+}
+
+export interface CreatorProfile {
+  id: string;
+  userNumber: number;
+  displayName: string;
+  avatarUrl: string;
+  bio: string;
+  websiteUrl: string;
+  joinedAt: string;
+  followerCount: number;
+  following: boolean;
+  blocked: boolean;
+  gameCount: number;
+  games: Game[];
+}
+
+export interface FollowState {
+  following: boolean;
+  followerCount: number;
+}
+
+export interface BlockState extends FollowState {
+  blocked: boolean;
 }
 
 export interface Category {
@@ -67,6 +93,7 @@ export interface Game {
   repositoryUrl?: string;
   engine: string;
   version: string;
+  releaseNotes?: string;
   status: GameStatus;
   /** The user who submitted this game for review. Admin-created games have no owner. */
   ownerId?: string;
@@ -95,6 +122,82 @@ export interface Game {
   createdAt: string;
   updatedAt: string;
   publishedAt?: string;
+}
+
+export interface CommunityEvent {
+  id: string;
+  kind: string;
+  actorId: string;
+  actorName: string;
+  actorAvatarUrl: string;
+  gameId: string;
+  gameSlug: string;
+  gameTitle: string;
+  gameCoverUrl: string;
+  summary: string;
+  createdAt: string;
+}
+
+export interface Notification {
+  id: string;
+  kind: string;
+  title: string;
+  body: string;
+  link: string;
+  read: boolean;
+  createdAt: string;
+}
+
+export interface NotificationList {
+  items: Notification[];
+  unreadCount: number;
+}
+
+export interface GameVersion {
+  id: string;
+  gameId: string;
+  version: string;
+  releaseNotes: string;
+  changes: string[];
+  createdById: string;
+  createdByName: string;
+  createdAt: string;
+}
+
+export type ReportTargetType = "game" | "comment" | "creator";
+export type ReportStatus = "pending" | "resolved" | "dismissed";
+export type AppealStatus = "pending" | "accepted" | "rejected";
+
+export interface ModerationAppeal {
+  id: string;
+  reportId: string;
+  appellantId: string;
+  appellantName: string;
+  targetLabel: string;
+  reportStatus: ReportStatus;
+  reason: string;
+  status: AppealStatus;
+  resolution: string;
+  resolvedByName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ContentReport {
+  id: string;
+  reporterId: string;
+  reporterName: string;
+  targetType: ReportTargetType;
+  targetId: string;
+  targetLabel: string;
+  reason: string;
+  detail: string;
+  status: ReportStatus;
+  resolution: string;
+  resolvedByName: string;
+  createdAt: string;
+  updatedAt: string;
+  appeal?: ModerationAppeal;
 }
 
 /** One message in a game's discussion. Replies nest exactly one level deep. */
@@ -150,6 +253,7 @@ export interface GameInput {
   repositoryUrl?: string;
   engine: string;
   version: string;
+  releaseNotes?: string;
   status: GameStatus;
   categoryId: string;
   featured: boolean;
@@ -349,8 +453,55 @@ export class ApiClient {
     return this.request<User>("/me");
   }
 
-  updateMe(input: { displayName?: string; avatarUrl?: string }) {
+  updateMe(input: { displayName?: string; avatarUrl?: string; bio?: string; websiteUrl?: string }) {
     return this.request<User>("/me", { method: "PATCH", body: JSON.stringify(input) });
+  }
+
+  creator(id: string) {
+    return this.request<CreatorProfile>(`/creators/${encodeURIComponent(id)}`);
+  }
+
+  followCreator(id: string) {
+    return this.request<FollowState>(`/creators/${encodeURIComponent(id)}/follow`, { method: "POST" });
+  }
+
+  unfollowCreator(id: string) {
+    return this.request<FollowState>(`/creators/${encodeURIComponent(id)}/follow`, { method: "DELETE" });
+  }
+
+  blockCreator(id: string) {
+    return this.request<BlockState>(`/creators/${encodeURIComponent(id)}/block`, { method: "POST" });
+  }
+
+  unblockCreator(id: string) {
+    return this.request<BlockState>(`/creators/${encodeURIComponent(id)}/block`, { method: "DELETE" });
+  }
+
+  communityFeed(limit = 50) {
+    return this.request<CommunityEvent[]>(`/me/feed?limit=${encodeURIComponent(String(limit))}`);
+  }
+
+  notifications(limit = 50) {
+    return this.request<NotificationList>(`/me/notifications?limit=${encodeURIComponent(String(limit))}`);
+  }
+
+  readNotification(id: string) {
+    return this.request<void>(`/me/notifications/${encodeURIComponent(id)}/read`, { method: "POST" });
+  }
+
+  readAllNotifications() {
+    return this.request<void>("/me/notifications/read", { method: "POST" });
+  }
+
+  myReports() {
+    return this.request<ContentReport[]>("/me/reports");
+  }
+
+  createAppeal(reportId: string, reason: string) {
+    return this.request<ModerationAppeal>(`/me/reports/${encodeURIComponent(reportId)}/appeal`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    });
   }
 
   uploadAvatar(avatar: Blob) {
@@ -380,6 +531,22 @@ export class ApiClient {
     return this.request<LaunchResponse>(`/games/${encodeURIComponent(slug)}/launch`, {
       method: "POST",
     });
+  }
+
+  gameFollowState(slug: string) {
+    return this.request<FollowState>(`/games/${encodeURIComponent(slug)}/follow`);
+  }
+
+  followGame(slug: string) {
+    return this.request<FollowState>(`/games/${encodeURIComponent(slug)}/follow`, { method: "POST" });
+  }
+
+  unfollowGame(slug: string) {
+    return this.request<FollowState>(`/games/${encodeURIComponent(slug)}/follow`, { method: "DELETE" });
+  }
+
+  gameVersions(slug: string) {
+    return this.request<GameVersion[]>(`/games/${encodeURIComponent(slug)}/versions`);
   }
 
   /**
@@ -547,6 +714,18 @@ export class ApiClient {
     return this.request<void>(`/me/games/${encodeURIComponent(id)}`, { method: "DELETE" });
   }
 
+  myGameVersions(id: string) {
+    return this.request<GameVersion[]>(`/me/games/${encodeURIComponent(id)}/versions`);
+  }
+
+  rollbackMyGame(id: string, versionId: string) {
+    return this.request<Game>(`/me/games/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/rollback`, { method: "POST" });
+  }
+
+  reportContent(input: { targetType: ReportTargetType; targetId: string; reason: string; detail?: string }) {
+    return this.request<ContentReport>("/reports", { method: "POST", body: JSON.stringify(input) });
+  }
+
   /** Approves a submitted game so it appears on the public site. */
   approveGame(id: string) {
     return this.request<Game>(`/admin/games/${encodeURIComponent(id)}/approve`, {
@@ -604,6 +783,38 @@ export class ApiClient {
 
   deleteGame(id: string) {
     return this.request<void>(`/admin/games/${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
+
+  adminGameVersions(id: string) {
+    return this.request<GameVersion[]>(`/admin/games/${encodeURIComponent(id)}/versions`);
+  }
+
+  rollbackAdminGame(id: string, versionId: string) {
+    return this.request<Game>(`/admin/games/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/rollback`, { method: "POST" });
+  }
+
+  adminReports(status = "") {
+    const suffix = status ? `?status=${encodeURIComponent(status)}` : "";
+    return this.request<ContentReport[]>(`/admin/reports${suffix}`);
+  }
+
+  resolveReport(id: string, input: { status: Exclude<ReportStatus, "pending">; resolution: string }) {
+    return this.request<ContentReport>(`/admin/reports/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    });
+  }
+
+  adminAppeals(status: AppealStatus | "" = "") {
+    const suffix = status ? `?status=${encodeURIComponent(status)}` : "";
+    return this.request<ModerationAppeal[]>(`/admin/appeals${suffix}`);
+  }
+
+  resolveAppeal(id: string, input: { status: Exclude<AppealStatus, "pending">; resolution: string }) {
+    return this.request<ModerationAppeal>(`/admin/appeals/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    });
   }
 
   adminUsers() {

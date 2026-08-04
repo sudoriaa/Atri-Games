@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, FolderTree, Gamepad2, Gauge, LogOut, Menu, ServerCog, UsersRound, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Flag, FolderTree, Gamepad2, Gauge, LogOut, Menu, Scale, ServerCog, UsersRound, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useAdminAuth } from "../lib/auth";
@@ -8,6 +8,8 @@ const navigation = [
   { to: "/games", label: "游戏管理", icon: Gamepad2 },
   { to: "/categories", label: "分类管理", icon: FolderTree },
   { to: "/users", label: "用户管理", icon: UsersRound },
+  { to: "/reports", label: "举报审核", icon: Flag },
+  { to: "/appeals", label: "申诉审核", icon: Scale },
   { to: "/system", label: "系统状态", icon: ServerCog },
 ];
 

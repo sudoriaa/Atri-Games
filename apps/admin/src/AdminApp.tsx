@@ -1,10 +1,12 @@
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AdminLayout } from "./components/AdminLayout";
+import { AppealsPage } from "./pages/AppealsPage";
 import { useAdminAuth } from "./lib/auth";
 import { CategoriesPage } from "./pages/CategoriesPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { GamesPage } from "./pages/GamesPage";
 import { LoginPage } from "./pages/LoginPage";
+import { ReportsPage } from "./pages/ReportsPage";
 import { SystemPage } from "./pages/SystemPage";
 import { UsersPage } from "./pages/UsersPage";
 
@@ -25,6 +27,8 @@ export function AdminApp() {
         <Route path="games" element={<GamesPage />} />
         <Route path="categories" element={<CategoriesPage />} />
         <Route path="users" element={<UsersPage />} />
+        <Route path="reports" element={<ReportsPage />} />
+        <Route path="appeals" element={<AppealsPage />} />
         <Route path="system" element={<SystemPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

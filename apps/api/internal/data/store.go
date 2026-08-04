@@ -24,6 +24,12 @@ var (
 	// ErrGameNotReviewable is returned when approving a game whose status is
 	// neither "review" nor already "published".
 	ErrGameNotReviewable = errors.New("game is not in a reviewable state")
+	ErrInvalidFollow     = errors.New("invalid follow relationship")
+	ErrInvalidBlock      = errors.New("invalid block relationship")
+	ErrForbidden         = errors.New("operation forbidden")
+	ErrInvalidReport     = errors.New("invalid content report")
+	ErrInvalidAppeal     = errors.New("invalid moderation appeal")
+	ErrAppealExists      = errors.New("moderation appeal already exists")
 )
 
 const maxUserNumber int64 = 1<<63 - 1
@@ -93,6 +99,8 @@ func (s *Store) MigrateAndSeed(adminEmail, adminHash string) error {
 			password_hash TEXT NOT NULL,
 			display_name TEXT NOT NULL,
 			avatar_url TEXT NOT NULL DEFAULT '',
+			bio TEXT NOT NULL DEFAULT '',
+			website_url TEXT NOT NULL DEFAULT '',
 			role TEXT NOT NULL CHECK(role IN ('user', 'admin')) DEFAULT 'user',
 			status TEXT NOT NULL CHECK(status IN ('active', 'suspended')) DEFAULT 'active',
 			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
@@ -211,6 +219,80 @@ func (s *Store) MigrateAndSeed(adminEmail, adminHash string) error {
 			channel TEXT NOT NULL DEFAULT 'link',
 			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
 		)`,
+		`CREATE TABLE IF NOT EXISTS creator_follows (
+			follower_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			creator_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+			PRIMARY KEY(follower_user_id, creator_user_id),
+			CHECK(follower_user_id != creator_user_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS user_blocks (
+			blocker_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			blocked_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+			PRIMARY KEY(blocker_user_id, blocked_user_id),
+			CHECK(blocker_user_id != blocked_user_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS game_follows (
+			user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+			PRIMARY KEY(user_id, game_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS game_versions (
+			id TEXT PRIMARY KEY,
+			game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+			version TEXT NOT NULL,
+			release_notes TEXT NOT NULL DEFAULT '',
+			snapshot_json TEXT NOT NULL,
+			created_by_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+		)`,
+		`CREATE TABLE IF NOT EXISTS community_events (
+			id TEXT PRIMARY KEY,
+			kind TEXT NOT NULL,
+			actor_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+			game_id TEXT REFERENCES games(id) ON DELETE CASCADE,
+			summary TEXT NOT NULL DEFAULT '',
+			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+		)`,
+		`CREATE TABLE IF NOT EXISTS notifications (
+			id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			kind TEXT NOT NULL,
+			actor_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+			game_id TEXT REFERENCES games(id) ON DELETE CASCADE,
+			title TEXT NOT NULL,
+			body TEXT NOT NULL DEFAULT '',
+			link TEXT NOT NULL DEFAULT '',
+			read_at TEXT,
+			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+		)`,
+		`CREATE TABLE IF NOT EXISTS content_reports (
+			id TEXT PRIMARY KEY,
+			reporter_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			target_type TEXT NOT NULL,
+			target_id TEXT NOT NULL,
+			reason TEXT NOT NULL,
+			detail TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'pending',
+			resolution TEXT NOT NULL DEFAULT '',
+			resolved_by_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+			updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+		)`,
+		`CREATE TABLE IF NOT EXISTS moderation_appeals (
+			id TEXT PRIMARY KEY,
+			report_id TEXT NOT NULL UNIQUE REFERENCES content_reports(id) ON DELETE CASCADE,
+			appellant_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			report_status TEXT NOT NULL,
+			reason TEXT NOT NULL,
+			status TEXT NOT NULL DEFAULT 'pending',
+			resolution TEXT NOT NULL DEFAULT '',
+			resolved_by_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+			updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+		)`,
 		`CREATE TABLE IF NOT EXISTS play_events (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,
@@ -239,6 +321,14 @@ func (s *Store) MigrateAndSeed(adminEmail, adminHash string) error {
 		`CREATE INDEX IF NOT EXISTS idx_game_comments_user ON game_comments(user_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_game_comment_likes_comment ON game_comment_likes(comment_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_game_share_events_game ON game_share_events(game_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_creator_follows_creator ON creator_follows(creator_user_id,created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_user_blocks_blocked ON user_blocks(blocked_user_id,created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_game_follows_game ON game_follows(game_id,created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_game_versions_game ON game_versions(game_id,created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_community_events_created ON community_events(created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id,read_at,created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_content_reports_status ON content_reports(status,created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_moderation_appeals_status ON moderation_appeals(status,created_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC)`,
 	}
 	for _, statement := range statements {
@@ -268,6 +358,9 @@ func (s *Store) MigrateAndSeed(adminEmail, adminHash string) error {
 		return err
 	}
 	if err := s.seed(tx, adminEmail, adminHash, !gamesTableExisted); err != nil {
+		return err
+	}
+	if err := backfillGameVersionsTx(tx); err != nil {
 		return err
 	}
 	if err := backfillUserNumbers(tx); err != nil {
@@ -328,6 +421,16 @@ func ensureUserColumns(tx *sql.Tx) error {
 	}
 	if !columns["avatar_url"] {
 		if _, err := tx.Exec(`ALTER TABLE users ADD COLUMN avatar_url TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	if !columns["bio"] {
+		if _, err := tx.Exec(`ALTER TABLE users ADD COLUMN bio TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	if !columns["website_url"] {
+		if _, err := tx.Exec(`ALTER TABLE users ADD COLUMN website_url TEXT NOT NULL DEFAULT ''`); err != nil {
 			return err
 		}
 	}
@@ -619,9 +722,21 @@ func backfillPlatformColumns(tx *sql.Tx) error {
 func (s *Store) seed(tx *sql.Tx, adminEmail, adminHash string, initializeGames bool) error {
 	categories := []Category{
 		{ID: "arcade", Name: "街机动作", Description: "短回合、快速反馈与技巧挑战", SortOrder: 10},
+		{ID: "adventure", Name: "动作冒险", Description: "平台跳跃、关卡探索与即时战斗", SortOrder: 15},
 		{ID: "puzzle", Name: "益智解谜", Description: "观察、推理与空间思考", SortOrder: 20},
+		{ID: "rpg", Name: "角色扮演", Description: "角色成长、装备构筑与任务旅程", SortOrder: 25},
 		{ID: "strategy", Name: "策略经营", Description: "规划资源并建立长期优势", SortOrder: 30},
+		{ID: "simulation", Name: "模拟养成", Description: "经营建造、生活模拟与角色养成", SortOrder: 35},
 		{ID: "narrative", Name: "叙事探索", Description: "由选择推动的互动故事", SortOrder: 40},
+		{ID: "card", Name: "卡牌桌游", Description: "卡组构筑、回合博弈与桌面规则", SortOrder: 45},
+		{ID: "rhythm", Name: "音乐节奏", Description: "音符判定、节拍挑战与音乐互动", SortOrder: 50},
+		{ID: "sports-racing", Name: "体育竞速", Description: "球类竞技、赛车与运动挑战", SortOrder: 60},
+		{ID: "shooter", Name: "射击竞技", Description: "精准射击、弹幕躲避与战术对抗", SortOrder: 70},
+		{ID: "survival-horror", Name: "生存恐怖", Description: "资源管理、潜行求生与惊悚氛围", SortOrder: 80},
+		{ID: "sandbox", Name: "沙盒创造", Description: "自由建造、开放玩法与创意表达", SortOrder: 90},
+		{ID: "casual-party", Name: "休闲派对", Description: "轻量规则、聚会同乐与碎片时间", SortOrder: 100},
+		{ID: "multiplayer", Name: "多人社交", Description: "在线合作、竞技对抗与社交互动", SortOrder: 110},
+		{ID: "educational", Name: "教育科普", Description: "知识探索、技能训练与互动学习", SortOrder: 120},
 	}
 	for _, category := range categories {
 		if _, err := tx.Exec(`INSERT OR IGNORE INTO categories(id,name,description,sort_order) VALUES(?,?,?,?)`, category.ID, category.Name, category.Description, category.SortOrder); err != nil {
@@ -796,16 +911,16 @@ func (s *Store) CreateUser(email, passwordHash, displayName string) (User, error
 }
 
 func (s *Store) UserByEmail(email string) (User, error) {
-	return scanUser(s.db.QueryRow(`SELECT id,user_number,email,password_hash,display_name,avatar_url,role,status,created_at FROM users WHERE email=?`, strings.ToLower(email)))
+	return scanUser(s.db.QueryRow(`SELECT id,user_number,email,password_hash,display_name,avatar_url,bio,website_url,role,status,created_at FROM users WHERE email=?`, strings.ToLower(email)))
 }
 
 func (s *Store) UserByID(id string) (User, error) {
-	return scanUser(s.db.QueryRow(`SELECT id,user_number,email,password_hash,display_name,avatar_url,role,status,created_at FROM users WHERE id=?`, id))
+	return scanUser(s.db.QueryRow(`SELECT id,user_number,email,password_hash,display_name,avatar_url,bio,website_url,role,status,created_at FROM users WHERE id=?`, id))
 }
 
 func scanUser(row interface{ Scan(...any) error }) (User, error) {
 	var user User
-	if err := row.Scan(&user.ID, &user.UserNumber, &user.Email, &user.PasswordHash, &user.DisplayName, &user.AvatarURL, &user.Role, &user.Status, &user.CreatedAt); err != nil {
+	if err := row.Scan(&user.ID, &user.UserNumber, &user.Email, &user.PasswordHash, &user.DisplayName, &user.AvatarURL, &user.Bio, &user.WebsiteURL, &user.Role, &user.Status, &user.CreatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return User{}, ErrNotFound
 		}
@@ -815,7 +930,15 @@ func scanUser(row interface{ Scan(...any) error }) (User, error) {
 }
 
 func (s *Store) UpdateProfile(userID, displayName, avatarURL string) (User, error) {
-	result, err := s.db.Exec(`UPDATE users SET display_name=?,avatar_url=? WHERE id=?`, displayName, avatarURL, userID)
+	current, err := s.UserByID(userID)
+	if err != nil {
+		return User{}, err
+	}
+	return s.UpdateProfileDetails(userID, displayName, avatarURL, current.Bio, current.WebsiteURL)
+}
+
+func (s *Store) UpdateProfileDetails(userID, displayName, avatarURL, bio, websiteURL string) (User, error) {
+	result, err := s.db.Exec(`UPDATE users SET display_name=?,avatar_url=?,bio=?,website_url=? WHERE id=?`, displayName, avatarURL, bio, websiteURL, userID)
 	if err != nil {
 		return User{}, err
 	}
@@ -826,7 +949,7 @@ func (s *Store) UpdateProfile(userID, displayName, avatarURL string) (User, erro
 }
 
 func (s *Store) ListUsers() ([]User, error) {
-	rows, err := s.db.Query(`SELECT id,user_number,email,password_hash,display_name,avatar_url,role,status,created_at FROM users ORDER BY user_number DESC`)
+	rows, err := s.db.Query(`SELECT id,user_number,email,password_hash,display_name,avatar_url,bio,website_url,role,status,created_at FROM users ORDER BY user_number DESC`)
 	if err != nil {
 		return nil, err
 	}

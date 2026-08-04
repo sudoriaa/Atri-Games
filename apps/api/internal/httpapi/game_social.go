@@ -117,6 +117,9 @@ func (s *Server) createGameComment(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreError(w, r, err)
 		return
 	}
+	if err := s.store.NotifyComment(currentUser(r).ID, gameID, strings.TrimSpace(input.ParentID), input.Body); err != nil {
+		s.logger.Error("notify comment recipients", "gameId", gameID, "commentId", comment.ID, "error", err)
+	}
 	comment.CanDelete = true
 	writeJSON(w, http.StatusCreated, comment)
 }

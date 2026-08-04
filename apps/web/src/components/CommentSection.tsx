@@ -1,9 +1,10 @@
 import type { GameComment } from "@atri/shared";
-import { Heart, MessageSquare, Reply, Send, Trash2 } from "lucide-react";
+import { Flag, Heart, MessageSquare, Reply, Send, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { UserAvatar } from "./UserAvatar";
+import { ReportDialog } from "./ReportDialog";
 
 const PAGE_SIZE = 20;
 const MAX_BODY = 1000;
@@ -53,6 +54,7 @@ export function CommentSection({ slug, onCountChange }: CommentSectionProps) {
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [replyBody, setReplyBody] = useState("");
   const [busyId, setBusyId] = useState("");
+  const [reporting, setReporting] = useState<GameComment | null>(null);
 
   const load = useCallback(
     async (targetPage: number) => {
@@ -184,7 +186,7 @@ export function CommentSection({ slug, onCountChange }: CommentSectionProps) {
       />
       <div className="comment__main">
         <div className="comment__meta">
-          <strong>{comment.authorName}</strong>
+          <Link to={`/creators/${comment.authorId}`}><strong>{comment.authorName}</strong></Link>
           {comment.authorUserNumber > 0 && <span className="comment__user-id">用户 ID: {comment.authorUserNumber}</span>}
           {comment.authorRole === "admin" && <span className="comment__badge">管理员</span>}
           <time dateTime={comment.createdAt}>{formatTime(comment.createdAt)}</time>
@@ -224,6 +226,7 @@ export function CommentSection({ slug, onCountChange }: CommentSectionProps) {
               <Trash2 size={13} /> 删除
             </button>
           )}
+          {!comment.canDelete && <button className="comment__action" onClick={() => user ? setReporting(comment) : requireLogin()}><Flag size={13} /> 举报</button>}
         </div>
 
         {replyTo === comment.id && (
@@ -318,6 +321,7 @@ export function CommentSection({ slug, onCountChange }: CommentSectionProps) {
           <button disabled={page >= pages || loading} onClick={() => void load(page + 1)}>下一页</button>
         </div>
       )}
+      {reporting && <ReportDialog targetType="comment" targetId={reporting.id} targetLabel={`${reporting.authorName} 的留言`} onClose={() => setReporting(null)} />}
     </section>
   );
 }

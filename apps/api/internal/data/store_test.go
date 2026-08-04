@@ -55,8 +55,17 @@ func TestStoreCoreLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Categories: %v", err)
 	}
-	if len(categories) != 4 {
-		t.Fatalf("category count = %d, want 4", len(categories))
+	wantCategoryIDs := []string{
+		"arcade", "adventure", "puzzle", "rpg", "strategy", "simulation", "narrative", "card",
+		"rhythm", "sports-racing", "shooter", "survival-horror", "sandbox", "casual-party", "multiplayer", "educational",
+	}
+	if len(categories) != len(wantCategoryIDs) {
+		t.Fatalf("category count = %d, want %d", len(categories), len(wantCategoryIDs))
+	}
+	for index, wantID := range wantCategoryIDs {
+		if categories[index].ID != wantID {
+			t.Fatalf("category %d ID = %q, want %q", index, categories[index].ID, wantID)
+		}
 	}
 
 	player, err := store.CreateUser("PLAYER@EXAMPLE.TEST", "player-hash", "Player")
@@ -222,6 +231,50 @@ func TestStoreCoreLifecycle(t *testing.T) {
 	activities, err := store.Activity(500)
 	if err != nil || len(activities) < 4 {
 		t.Fatalf("Activity = %d items, %v", len(activities), err)
+	}
+}
+
+func TestMigrateAndSeedBackfillsExpandedCategories(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "category-backfill.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	if _, err := store.db.Exec(`CREATE TABLE categories (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		description TEXT NOT NULL DEFAULT '',
+		sort_order INTEGER NOT NULL DEFAULT 0
+	)`); err != nil {
+		t.Fatalf("create existing categories table: %v", err)
+	}
+	if _, err := store.db.Exec(
+		`INSERT INTO categories(id,name,description,sort_order) VALUES(?,?,?,?)`,
+		"arcade", "自定义街机", "保留管理员配置", 777,
+	); err != nil {
+		t.Fatalf("insert existing category: %v", err)
+	}
+
+	if err := store.MigrateAndSeed("admin@example.test", "admin-password-hash"); err != nil {
+		t.Fatalf("MigrateAndSeed: %v", err)
+	}
+	categories, err := store.Categories()
+	if err != nil {
+		t.Fatalf("Categories: %v", err)
+	}
+	if len(categories) != 16 {
+		t.Fatalf("category count after backfill = %d, want 16", len(categories))
+	}
+	byID := make(map[string]Category, len(categories))
+	for _, category := range categories {
+		byID[category.ID] = category
+	}
+	if arcade := byID["arcade"]; arcade.Name != "自定义街机" || arcade.Description != "保留管理员配置" || arcade.SortOrder != 777 {
+		t.Fatalf("existing category was overwritten: %+v", arcade)
+	}
+	if adventure := byID["adventure"]; adventure.Name != "动作冒险" || adventure.SortOrder != 15 {
+		t.Fatalf("new category was not backfilled: %+v", adventure)
 	}
 }
 

@@ -24,6 +24,8 @@ function editableAvatarUrl(value?: string | null) {
 export function ProfilePage() {
   const { api, user, logout, updateUser } = useAuth();
   const [displayName, setDisplayName] = useState(user?.displayName ?? "");
+  const [bio, setBio] = useState(user?.bio ?? "");
+  const [websiteUrl, setWebsiteUrl] = useState(user?.websiteUrl ?? "");
   const [avatarUrl, setAvatarUrl] = useState(() => editableAvatarUrl(user?.avatarUrl));
   const [avatarUrlDirty, setAvatarUrlDirty] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
@@ -35,6 +37,8 @@ export function ProfilePage() {
 
   useEffect(() => {
     setDisplayName(user?.displayName ?? "");
+    setBio(user?.bio ?? "");
+    setWebsiteUrl(user?.websiteUrl ?? "");
     setAvatarUrl(editableAvatarUrl(user?.avatarUrl));
     setAvatarUrlDirty(false);
     setAvatarFile(null);
@@ -87,6 +91,8 @@ export function ProfilePage() {
     event.preventDefault();
     const nextDisplayName = displayName.trim();
     const nextAvatarUrl = avatarUrl.trim();
+    const nextBio = bio.trim();
+    const nextWebsiteUrl = websiteUrl.trim();
 
     if (!nextDisplayName) {
       setAvatarError("显示昵称不能为空。");
@@ -96,7 +102,11 @@ export function ProfilePage() {
       setAvatarError("头像链接必须使用 HTTPS。");
       return;
     }
-    if (!avatarFile && !avatarUrlDirty && nextDisplayName === user.displayName) {
+    if (nextWebsiteUrl && !isHttpsImageUrl(nextWebsiteUrl)) {
+      setAvatarError("个人主页必须使用 HTTPS。");
+      return;
+    }
+    if (!avatarFile && !avatarUrlDirty && nextDisplayName === user.displayName && nextBio === (user.bio ?? "") && nextWebsiteUrl === (user.websiteUrl ?? "")) {
       setMessage("没有需要保存的更改。");
       return;
     }
@@ -108,17 +118,18 @@ export function ProfilePage() {
       let updated;
       if (avatarFile) {
         updated = await api.uploadAvatar(avatarFile);
-        if (nextDisplayName !== updated.displayName) {
-          updated = await api.updateMe({ displayName: nextDisplayName });
-        }
-      } else {
-        updated = await api.updateMe(
-          avatarUrlDirty ? { displayName: nextDisplayName, avatarUrl: nextAvatarUrl } : { displayName: nextDisplayName },
-        );
       }
+      updated = await api.updateMe({
+        displayName: nextDisplayName,
+        bio: nextBio,
+        websiteUrl: nextWebsiteUrl,
+        ...(avatarFile ? {} : avatarUrlDirty ? { avatarUrl: nextAvatarUrl } : {}),
+      });
 
       updateUser(updated);
       setDisplayName(updated.displayName);
+      setBio(updated.bio ?? "");
+      setWebsiteUrl(updated.websiteUrl ?? "");
       setAvatarUrl(editableAvatarUrl(updated.avatarUrl));
       setAvatarUrlDirty(false);
       setAvatarFile(null);
@@ -195,6 +206,14 @@ export function ProfilePage() {
               <input value={displayName} minLength={2} maxLength={40} onChange={(event) => setDisplayName(event.target.value)} disabled={busy} />
             </label>
             <label>
+              <span>创作者简介</span>
+              <textarea value={bio} maxLength={500} rows={4} onChange={(event) => setBio(event.target.value)} placeholder="介绍你的创作方向、常用引擎与 AI 工具" disabled={busy} />
+            </label>
+            <label>
+              <span>个人主页（HTTPS）</span>
+              <input type="url" value={websiteUrl} onChange={(event) => setWebsiteUrl(event.target.value)} placeholder="https://example.com" disabled={busy} />
+            </label>
+            <label>
               <span>账户邮箱</span>
               <div className="readonly-row"><Mail size={17} />{user.email}</div>
             </label>
@@ -211,7 +230,8 @@ export function ProfilePage() {
           <div className="profile-stat"><Heart /><strong>{favorites.data?.length ?? 0}</strong><span>收藏的游戏</span></div>
           <div className="profile-stat"><CalendarDays /><strong>{new Date(user.createdAt).getFullYear()}</strong><span>加入年份</span></div>
           <Link className="text-link" to="/library">打开我的收藏 →</Link>
-          <Link className="text-link" to="/my-games">管理我的游戏 →</Link>
+            <Link className="text-link" to="/my-games">管理我的游戏 →</Link>
+            <Link className="text-link" to="/safety">社区治理记录 →</Link>
         </aside>
       </div>
       <button className="danger-link" onClick={logout}><LogOut size={16} /> 退出当前账户</button>

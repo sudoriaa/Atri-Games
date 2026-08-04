@@ -1,8 +1,9 @@
-import { type Game, type GameStatus } from "@atri/shared";
-import { Edit3, Plus, Trash2 } from "lucide-react";
+import { type Game, type GameStatus, type GameVersion } from "@atri/shared";
+import { Edit3, History, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
 import { MyGameEditor } from "../components/MyGameEditor";
+import { VersionHistory } from "../components/VersionHistory";
 import { ErrorState, LoadingState } from "../components/PageState";
 import { useAuth } from "../lib/auth";
 import { useAsync } from "../lib/use-async";
@@ -16,6 +17,7 @@ export function MyGamesPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [noticeTone, setNoticeTone] = useState<"success" | "error">("success");
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [versioning, setVersioning] = useState<Game | null>(null);
   const games = useAsync(() => api.myGames({ pageSize: 100 }), [api]);
   const categories = useAsync(() => api.categories(), [api]);
 
@@ -100,6 +102,7 @@ export function MyGamesPage() {
                     </div>
                     <div className="my-game-row__actions">
                       <button className="button button--ghost button--small" onClick={() => setEditing(game)} disabled={deleting}><Edit3 size={15} /> 编辑</button>
+                      <button className="button button--ghost button--small" onClick={() => setVersioning(game)} disabled={deleting}><History size={15} /> 版本</button>
                       <button className="danger-link my-game-delete" onClick={() => remove(game)} disabled={deleting}>{deleting ? "删除中…" : "删除"}</button>
                     </div>
                   </article>
@@ -108,6 +111,21 @@ export function MyGamesPage() {
             )}
           </div>
         ))}
+      {versioning && <OwnerVersionDialog game={versioning} close={() => setVersioning(null)} rolledBack={(game) => { setVersioning(null); setNotice(`${game.title} 已回滚并重新提交审核`); setNoticeTone("success"); games.reload(); }} />}
     </div>
   );
+}
+
+function OwnerVersionDialog({ game, close, rolledBack }: { game: Game; close: () => void; rolledBack: (game: Game) => void }) {
+  const { api } = useAuth();
+  const versions = useAsync(() => api.myGameVersions(game.id), [api, game.id]);
+  const [busyId, setBusyId] = useState("");
+  const [error, setError] = useState("");
+  const rollback = async (version: GameVersion) => {
+    if (!window.confirm(`将可编辑资料回滚到 v${version.version} 并重新提交审核？`)) return;
+    setBusyId(version.id); setError("");
+    try { rolledBack(await api.rollbackMyGame(game.id, version.id)); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "回滚失败"); setBusyId(""); }
+  };
+  return <div className="report-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busyId) close(); }}><section className="version-dialog" role="dialog" aria-modal="true" aria-label={`${game.title} 版本记录`}><header><div><p className="kicker">VERSION CONTROL</p><h2>{game.title}</h2><p>回滚会恢复历史元数据，并重新进入审核。</p></div><button className="icon-button" onClick={close} disabled={Boolean(busyId)} aria-label="关闭"><X /></button></header>{versions.loading && <LoadingState />}{versions.error && <ErrorState message={versions.error} retry={versions.reload} />}{versions.data && <VersionHistory versions={versions.data} onRollback={(version) => void rollback(version)} busyId={busyId} />}{error && <p className="avatar-field-error" role="alert">{error}</p>}</section></div>;
 }

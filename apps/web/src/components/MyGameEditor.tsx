@@ -34,6 +34,7 @@ function gameEditorInput(game: Game): GameInput {
     repositoryUrl: game.repositoryUrl,
     engine: game.engine,
     version: game.version,
+    releaseNotes: "",
     status: game.status,
     categoryId: game.categoryId,
     featured: game.featured,
@@ -86,6 +87,7 @@ export function MyGameEditor({ game, categories, submitLabel, onCancel, onSave }
     form.description !== game.description ||
     form.authorName !== game.authorName ||
     form.version !== game.version ||
+    Boolean(form.releaseNotes?.trim()) ||
     form.categoryId !== game.categoryId ||
     form.launchUrl !== game.launchUrl ||
     form.launchOpenIn !== (game.launchOpenIn ?? "same-tab") ||
@@ -170,6 +172,10 @@ export function MyGameEditor({ game, categories, submitLabel, onCancel, onSave }
                 <option value={category.id} key={category.id}>{category.name}</option>
               ))}
             </select>
+          </label>
+          <label className="editor-grid__wide">
+            <span>版本更新说明</span>
+            <textarea rows={3} maxLength={1000} value={form.releaseNotes ?? ""} onChange={(event) => set("releaseNotes", event.target.value)} placeholder="说明本次新增内容、修复和体验变化，将展示在版本记录中" />
           </label>
           <label className="editor-grid__wide">
             <span>摘要 *</span>

@@ -80,6 +80,17 @@ func NewWithObjectStore(cfg config.Config, store *data.Store, tokens *security.T
 	mux.Handle("GET /api/v1/me", server.requireUser(http.HandlerFunc(server.me)))
 	mux.Handle("PATCH /api/v1/me", server.requireUser(http.HandlerFunc(server.updateMe)))
 	mux.Handle("POST /api/v1/me/avatar", server.requireUser(http.HandlerFunc(server.updateAvatar)))
+	mux.Handle("GET /api/v1/me/feed", server.requireUser(http.HandlerFunc(server.communityFeed)))
+	mux.Handle("GET /api/v1/me/notifications", server.requireUser(http.HandlerFunc(server.notifications)))
+	mux.Handle("POST /api/v1/me/notifications/read", server.requireUser(http.HandlerFunc(server.readAllNotifications)))
+	mux.Handle("POST /api/v1/me/notifications/{id}/read", server.requireUser(http.HandlerFunc(server.readNotification)))
+	mux.Handle("GET /api/v1/me/reports", server.requireUser(http.HandlerFunc(server.myReports)))
+	mux.Handle("POST /api/v1/me/reports/{id}/appeal", server.requireUser(server.limitGameRequests(server.gameWriteLimiter, http.HandlerFunc(server.createAppeal))))
+	mux.Handle("GET /api/v1/creators/{id}", server.optionalUser(http.HandlerFunc(server.creatorProfile)))
+	mux.Handle("POST /api/v1/creators/{id}/follow", server.requireUser(http.HandlerFunc(server.followCreator)))
+	mux.Handle("DELETE /api/v1/creators/{id}/follow", server.requireUser(http.HandlerFunc(server.unfollowCreator)))
+	mux.Handle("POST /api/v1/creators/{id}/block", server.requireUser(http.HandlerFunc(server.blockCreator)))
+	mux.Handle("DELETE /api/v1/creators/{id}/block", server.requireUser(http.HandlerFunc(server.unblockCreator)))
 	mux.HandleFunc("GET /api/v1/categories", server.categories)
 	mux.Handle("GET /api/v1/games", server.optionalUser(http.HandlerFunc(server.games)))
 	mux.Handle("GET /api/v1/games/{slug}", server.optionalUser(http.HandlerFunc(server.game)))
@@ -99,6 +110,10 @@ func NewWithObjectStore(cfg config.Config, store *data.Store, tokens *security.T
 	mux.Handle("POST /api/v1/games/{slug}/likes", server.requireUser(server.limitGameRequests(server.gameWriteLimiter, http.HandlerFunc(server.likeGame))))
 	mux.Handle("DELETE /api/v1/games/{slug}/likes", server.requireUser(server.limitGameRequests(server.gameWriteLimiter, http.HandlerFunc(server.unlikeGame))))
 	mux.Handle("POST /api/v1/games/{slug}/shares", server.optionalUser(server.limitGameRequests(server.gameWriteLimiter, http.HandlerFunc(server.recordShare))))
+	mux.Handle("GET /api/v1/games/{slug}/follow", server.optionalUser(http.HandlerFunc(server.gameFollowState)))
+	mux.Handle("POST /api/v1/games/{slug}/follow", server.requireUser(http.HandlerFunc(server.followGame)))
+	mux.Handle("DELETE /api/v1/games/{slug}/follow", server.requireUser(http.HandlerFunc(server.unfollowGame)))
+	mux.Handle("GET /api/v1/games/{slug}/versions", server.optionalUser(http.HandlerFunc(server.publicGameVersions)))
 	mux.Handle("GET /api/v1/games/{slug}/comments", server.optionalUser(http.HandlerFunc(server.gameComments)))
 	mux.Handle("POST /api/v1/games/{slug}/comments", server.requireUser(server.limitGameRequests(server.gameWriteLimiter, http.HandlerFunc(server.createGameComment))))
 	mux.Handle("DELETE /api/v1/games/{slug}/comments/{commentId}", server.requireUser(server.limitGameRequests(server.gameWriteLimiter, http.HandlerFunc(server.deleteGameComment))))
@@ -112,6 +127,9 @@ func NewWithObjectStore(cfg config.Config, store *data.Store, tokens *security.T
 	mux.Handle("POST /api/v1/me/games/import", server.requireUser(server.limitGameRequests(server.gameWriteLimiter, http.HandlerFunc(server.importMyGame))))
 	mux.Handle("PUT /api/v1/me/games/{id}", server.requireUser(server.limitGameRequests(server.gameWriteLimiter, http.HandlerFunc(server.updateMyGame))))
 	mux.Handle("DELETE /api/v1/me/games/{id}", server.requireUser(server.limitGameRequests(server.gameWriteLimiter, http.HandlerFunc(server.deleteMyGame))))
+	mux.Handle("GET /api/v1/me/games/{id}/versions", server.requireUser(http.HandlerFunc(server.myGameVersions)))
+	mux.Handle("POST /api/v1/me/games/{id}/versions/{versionId}/rollback", server.requireUser(http.HandlerFunc(server.rollbackMyGame)))
+	mux.Handle("POST /api/v1/reports", server.requireUser(server.limitGameRequests(server.gameWriteLimiter, http.HandlerFunc(server.createReport))))
 
 	mux.Handle("POST /api/v1/admin/games/{id}/approve", server.requireAdmin(http.HandlerFunc(server.approveGame)))
 
@@ -123,6 +141,12 @@ func NewWithObjectStore(cfg config.Config, store *data.Store, tokens *security.T
 	mux.Handle("PUT /api/v1/admin/games/{id}", server.requireAdmin(http.HandlerFunc(server.updateGame)))
 	mux.Handle("POST /api/v1/admin/games/{id}/unpublish", server.requireAdmin(http.HandlerFunc(server.unpublishGame)))
 	mux.Handle("DELETE /api/v1/admin/games/{id}", server.requireAdmin(http.HandlerFunc(server.deleteGame)))
+	mux.Handle("GET /api/v1/admin/games/{id}/versions", server.requireAdmin(http.HandlerFunc(server.adminGameVersions)))
+	mux.Handle("POST /api/v1/admin/games/{id}/versions/{versionId}/rollback", server.requireAdmin(http.HandlerFunc(server.rollbackAdminGame)))
+	mux.Handle("GET /api/v1/admin/reports", server.requireAdmin(http.HandlerFunc(server.adminReports)))
+	mux.Handle("PATCH /api/v1/admin/reports/{id}", server.requireAdmin(http.HandlerFunc(server.resolveReport)))
+	mux.Handle("GET /api/v1/admin/appeals", server.requireAdmin(http.HandlerFunc(server.adminAppeals)))
+	mux.Handle("PATCH /api/v1/admin/appeals/{id}", server.requireAdmin(http.HandlerFunc(server.resolveAppeal)))
 	mux.Handle("GET /api/v1/admin/users", server.requireAdmin(http.HandlerFunc(server.adminUsers)))
 	mux.Handle("PATCH /api/v1/admin/users/{id}", server.requireAdmin(http.HandlerFunc(server.updateUser)))
 	mux.Handle("GET /api/v1/admin/categories", server.requireAdmin(http.HandlerFunc(server.adminCategories)))
@@ -239,11 +263,13 @@ func (s *Server) updateMe(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		DisplayName *string `json:"displayName"`
 		AvatarURL   *string `json:"avatarUrl"`
+		Bio         *string `json:"bio"`
+		WebsiteURL  *string `json:"websiteUrl"`
 	}
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	if input.DisplayName == nil && input.AvatarURL == nil {
+	if input.DisplayName == nil && input.AvatarURL == nil && input.Bio == nil && input.WebsiteURL == nil {
 		writeError(w, http.StatusUnprocessableEntity, "invalid_profile", "请提供要更新的资料")
 		return
 	}
@@ -264,10 +290,26 @@ func (s *Server) updateMe(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	bio := current.Bio
+	if input.Bio != nil {
+		bio = strings.TrimSpace(*input.Bio)
+		if utf8.RuneCountInString(bio) > 500 {
+			writeError(w, http.StatusUnprocessableEntity, "invalid_bio", "个人简介不能超过 500 字")
+			return
+		}
+	}
+	websiteURL := current.WebsiteURL
+	if input.WebsiteURL != nil {
+		websiteURL = strings.TrimSpace(*input.WebsiteURL)
+		if websiteURL != "" && !validWebURL(websiteURL, false) {
+			writeError(w, http.StatusUnprocessableEntity, "invalid_website_url", "个人主页必须使用 HTTPS 地址")
+			return
+		}
+	}
 
 	s.avatarMu.Lock()
 	defer s.avatarMu.Unlock()
-	user, err := s.store.UpdateProfile(current.ID, displayName, avatarURL)
+	user, err := s.store.UpdateProfileDetails(current.ID, displayName, avatarURL, bio, websiteURL)
 	if err != nil {
 		s.writeStoreError(w, r, err)
 		return
@@ -645,6 +687,12 @@ func (s *Server) createGame(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreError(w, r, err)
 		return
 	}
+	if err := s.store.RecordGameVersion(currentUser(r).ID, game, input.ReleaseNotes); err != nil {
+		s.logger.Error("record created game version", "gameId", game.ID, "error", err)
+	}
+	if game.Status == "published" {
+		s.recordPublishedGameEvent(game, input.ReleaseNotes)
+	}
 	s.syncGameObjects("covers/" + game.Slug)
 	writeJSON(w, http.StatusCreated, game)
 }
@@ -845,6 +893,12 @@ func (s *Server) importGame(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreError(w, r, err)
 		return
 	}
+	if err := s.store.RecordGameVersion(currentUser(r).ID, game, "导入 .atri 游戏包"); err != nil {
+		s.logger.Error("record imported game version", "gameId", game.ID, "error", err)
+	}
+	if game.Status == "published" {
+		s.recordPublishedGameEvent(game, "导入 .atri 游戏包")
+	}
 	statusCode := http.StatusCreated
 	if existed {
 		statusCode = http.StatusOK
@@ -906,6 +960,12 @@ func (s *Server) updateGame(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreError(w, r, err)
 		return
 	}
+	if err := s.store.RecordGameVersion(currentUser(r).ID, game, input.ReleaseNotes); err != nil {
+		s.logger.Error("record updated game version", "gameId", game.ID, "error", err)
+	}
+	if game.Status == "published" {
+		s.recordPublishedGameEvent(game, input.ReleaseNotes)
+	}
 	s.syncGameObjects("covers/" + game.Slug)
 	writeJSON(w, http.StatusOK, game)
 }
@@ -929,6 +989,9 @@ func (s *Server) unpublishGame(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.writeStoreError(w, r, err)
 		return
+	}
+	if err := s.store.NotifyGameOwner(game, "game.unpublished", "游戏已下架", game.Title+" 已由管理员下架"); err != nil {
+		s.logger.Error("notify unpublished game owner", "gameId", game.ID, "error", err)
 	}
 	writeJSON(w, http.StatusOK, game)
 }
@@ -1144,6 +1207,9 @@ func (s *Server) importMyGame(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreError(w, r, err)
 		return
 	}
+	if err := s.store.RecordGameVersion(user.ID, game, "导入 .atri 游戏包"); err != nil {
+		s.logger.Error("record user imported game version", "gameId", game.ID, "error", err)
+	}
 	s.syncGameObjects("covers/"+game.Slug, "playables/"+game.Slug, "demos/"+game.Slug)
 	writeJSON(w, http.StatusCreated, game)
 }
@@ -1195,6 +1261,9 @@ func (s *Server) updateMyGame(w http.ResponseWriter, r *http.Request) {
 		s.writeStoreError(w, r, err)
 		return
 	}
+	if err := s.store.RecordGameVersion(user.ID, game, input.ReleaseNotes); err != nil {
+		s.logger.Error("record user game version", "gameId", game.ID, "error", err)
+	}
 	s.syncGameObjects("covers/" + game.Slug)
 	writeJSON(w, http.StatusOK, game)
 }
@@ -1220,10 +1289,21 @@ func (s *Server) deleteMyGame(w http.ResponseWriter, r *http.Request) {
 // approveGame publishes a game submitted for review. Approving an already
 // published game is idempotent; other statuses are rejected.
 func (s *Server) approveGame(w http.ResponseWriter, r *http.Request) {
+	before, err := s.store.GameByID(r.PathValue("id"), "")
+	if err != nil {
+		s.writeStoreError(w, r, err)
+		return
+	}
 	game, err := s.store.ApproveGame(currentUser(r).ID, r.PathValue("id"))
 	if err != nil {
 		s.writeStoreError(w, r, err)
 		return
+	}
+	if before.Status != "published" {
+		s.recordPublishedGameEvent(game, "")
+		if err := s.store.NotifyGameOwner(game, "game.approved", "游戏审核已通过", game.Title+" 已公开上架"); err != nil {
+			s.logger.Error("notify approved game owner", "gameId", game.ID, "error", err)
+		}
 	}
 	s.syncGameObjects("covers/"+game.Slug, "playables/"+game.Slug, "demos/"+game.Slug)
 	writeJSON(w, http.StatusOK, game)
@@ -1341,6 +1421,7 @@ func validateGameInput(w http.ResponseWriter, input data.GameInput) bool {
 		!slugPattern.MatchString(input.CategoryID) || len(input.CategoryID) > 64 ||
 		input.Engine == "" || utf8.RuneCountInString(input.Engine) > 80 ||
 		input.Version == "" || utf8.RuneCountInString(input.Version) > 40 ||
+		utf8.RuneCountInString(input.ReleaseNotes) > 1000 ||
 		input.AuthorName == "" || utf8.RuneCountInString(input.AuthorName) > 80 ||
 		len(input.Tags) > 10 {
 		writeError(w, http.StatusUnprocessableEntity, "invalid_game", "游戏字段不完整或状态无效")
@@ -1370,6 +1451,7 @@ func normalizeGameInput(input *data.GameInput) {
 	input.RepositoryURL = strings.TrimSpace(input.RepositoryURL)
 	input.Engine = strings.TrimSpace(input.Engine)
 	input.Version = strings.TrimSpace(input.Version)
+	input.ReleaseNotes = strings.TrimSpace(input.ReleaseNotes)
 	input.Status = strings.TrimSpace(input.Status)
 	input.CategoryID = strings.TrimSpace(input.CategoryID)
 
@@ -1573,6 +1655,18 @@ func (s *Server) writeStoreError(w http.ResponseWriter, r *http.Request, err err
 		writeError(w, http.StatusUnauthorized, "authentication_required", "该游戏需要登录后才能使用此服务")
 	case errors.Is(err, data.ErrGameNotReviewable):
 		writeError(w, http.StatusConflict, "game_not_reviewable", "该游戏当前状态无法直接通过审核")
+	case errors.Is(err, data.ErrInvalidFollow):
+		writeError(w, http.StatusUnprocessableEntity, "invalid_follow", "关注关系无效")
+	case errors.Is(err, data.ErrInvalidBlock):
+		writeError(w, http.StatusUnprocessableEntity, "invalid_block", "屏蔽关系无效")
+	case errors.Is(err, data.ErrForbidden):
+		writeError(w, http.StatusForbidden, "forbidden", "当前账户没有执行此操作的权限")
+	case errors.Is(err, data.ErrInvalidReport):
+		writeError(w, http.StatusUnprocessableEntity, "invalid_report", "请填写有效的举报对象、原因和说明")
+	case errors.Is(err, data.ErrInvalidAppeal):
+		writeError(w, http.StatusUnprocessableEntity, "invalid_appeal", "请填写有效的申诉说明，且仅可申诉已处理的举报")
+	case errors.Is(err, data.ErrAppealExists):
+		writeError(w, http.StatusConflict, "appeal_exists", "该举报已经提交过申诉")
 	case errors.Is(err, data.ErrGameStorageDisabled):
 		writeError(w, http.StatusConflict, "storage_disabled", "该游戏未启用内置数据服务")
 	case errors.Is(err, data.ErrGameStorageQuota):

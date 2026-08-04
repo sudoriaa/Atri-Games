@@ -7,6 +7,8 @@ type User struct {
 	PasswordHash string `json:"-"`
 	DisplayName  string `json:"displayName"`
 	AvatarURL    string `json:"avatarUrl"`
+	Bio          string `json:"bio"`
+	WebsiteURL   string `json:"websiteUrl"`
 	Role         string `json:"role"`
 	Status       string `json:"status"`
 	CreatedAt    string `json:"createdAt"`
@@ -20,20 +22,46 @@ type Category struct {
 	GameCount   int    `json:"gameCount,omitempty"`
 }
 
+type CreatorProfile struct {
+	ID            string `json:"id"`
+	UserNumber    int64  `json:"userNumber"`
+	DisplayName   string `json:"displayName"`
+	AvatarURL     string `json:"avatarUrl"`
+	Bio           string `json:"bio"`
+	WebsiteURL    string `json:"websiteUrl"`
+	JoinedAt      string `json:"joinedAt"`
+	FollowerCount int64  `json:"followerCount"`
+	Following     bool   `json:"following"`
+	Blocked       bool   `json:"blocked"`
+	GameCount     int    `json:"gameCount"`
+	Games         []Game `json:"games"`
+}
+
+type FollowState struct {
+	Following     bool  `json:"following"`
+	FollowerCount int64 `json:"followerCount"`
+}
+
+type BlockState struct {
+	Blocked       bool  `json:"blocked"`
+	Following     bool  `json:"following"`
+	FollowerCount int64 `json:"followerCount"`
+}
+
 type Game struct {
-	ID              string `json:"id"`
-	Slug            string `json:"slug"`
-	Title           string `json:"title"`
-	Summary         string `json:"summary"`
-	Description     string `json:"description"`
-	AuthorName      string `json:"authorName"`
-	CoverURL        string `json:"coverUrl"`
-	LaunchURL       string `json:"launchUrl"`
-	LaunchOpenIn    string `json:"launchOpenIn"`
-	RepositoryURL   string `json:"repositoryUrl,omitempty"`
-	Engine          string `json:"engine"`
-	Version         string `json:"version"`
-	Status          string `json:"status"`
+	ID            string `json:"id"`
+	Slug          string `json:"slug"`
+	Title         string `json:"title"`
+	Summary       string `json:"summary"`
+	Description   string `json:"description"`
+	AuthorName    string `json:"authorName"`
+	CoverURL      string `json:"coverUrl"`
+	LaunchURL     string `json:"launchUrl"`
+	LaunchOpenIn  string `json:"launchOpenIn"`
+	RepositoryURL string `json:"repositoryUrl,omitempty"`
+	Engine        string `json:"engine"`
+	Version       string `json:"version"`
+	Status        string `json:"status"`
 	// OwnerID/OwnerName identify the user who submitted a game for review.
 	// Games created directly in the admin console have no owner.
 	OwnerID         string `json:"ownerId,omitempty"`
@@ -104,6 +132,7 @@ type GameInput struct {
 	RepositoryURL       string   `json:"repositoryUrl"`
 	Engine              string   `json:"engine"`
 	Version             string   `json:"version"`
+	ReleaseNotes        string   `json:"releaseNotes"`
 	Status              string   `json:"status"`
 	CategoryID          string   `json:"categoryId"`
 	Featured            bool     `json:"featured"`
@@ -113,6 +142,79 @@ type GameInput struct {
 	UsesPlatformStorage bool     `json:"usesPlatformStorage"`
 	MatchmakingEnabled  bool     `json:"matchmakingEnabled"`
 	Tags                []string `json:"tags"`
+}
+
+type CommunityEvent struct {
+	ID             string `json:"id"`
+	Kind           string `json:"kind"`
+	ActorID        string `json:"actorId"`
+	ActorName      string `json:"actorName"`
+	ActorAvatarURL string `json:"actorAvatarUrl"`
+	GameID         string `json:"gameId"`
+	GameSlug       string `json:"gameSlug"`
+	GameTitle      string `json:"gameTitle"`
+	GameCoverURL   string `json:"gameCoverUrl"`
+	Summary        string `json:"summary"`
+	CreatedAt      string `json:"createdAt"`
+}
+
+type Notification struct {
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	Title     string `json:"title"`
+	Body      string `json:"body"`
+	Link      string `json:"link"`
+	Read      bool   `json:"read"`
+	CreatedAt string `json:"createdAt"`
+}
+
+type NotificationList struct {
+	Items       []Notification `json:"items"`
+	UnreadCount int            `json:"unreadCount"`
+}
+
+type GameVersion struct {
+	ID            string   `json:"id"`
+	GameID        string   `json:"gameId"`
+	Version       string   `json:"version"`
+	ReleaseNotes  string   `json:"releaseNotes"`
+	Changes       []string `json:"changes"`
+	CreatedByID   string   `json:"createdById"`
+	CreatedByName string   `json:"createdByName"`
+	CreatedAt     string   `json:"createdAt"`
+	SnapshotJSON  string   `json:"-"`
+}
+
+type ContentReport struct {
+	ID             string            `json:"id"`
+	ReporterID     string            `json:"reporterId"`
+	ReporterName   string            `json:"reporterName"`
+	TargetType     string            `json:"targetType"`
+	TargetID       string            `json:"targetId"`
+	TargetLabel    string            `json:"targetLabel"`
+	Reason         string            `json:"reason"`
+	Detail         string            `json:"detail"`
+	Status         string            `json:"status"`
+	Resolution     string            `json:"resolution"`
+	ResolvedByName string            `json:"resolvedByName"`
+	CreatedAt      string            `json:"createdAt"`
+	UpdatedAt      string            `json:"updatedAt"`
+	Appeal         *ModerationAppeal `json:"appeal,omitempty"`
+}
+
+type ModerationAppeal struct {
+	ID             string `json:"id"`
+	ReportID       string `json:"reportId"`
+	AppellantID    string `json:"appellantId"`
+	AppellantName  string `json:"appellantName"`
+	TargetLabel    string `json:"targetLabel"`
+	ReportStatus   string `json:"reportStatus"`
+	Reason         string `json:"reason"`
+	Status         string `json:"status"`
+	Resolution     string `json:"resolution"`
+	ResolvedByName string `json:"resolvedByName"`
+	CreatedAt      string `json:"createdAt"`
+	UpdatedAt      string `json:"updatedAt"`
 }
 
 type LaunchResult struct {
